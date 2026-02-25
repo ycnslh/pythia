@@ -96,7 +96,9 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
 
     for attempt in range(retries + 1):
         try:
-            response = await client.chat.completions.create(
+            # Use streaming to avoid timeout waiting for full response on slow hardware
+            raw_chunks: list[str] = []
+            async with client.chat.completions.stream(
                 model=settings.ollama_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -104,13 +106,17 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
                 ],
                 temperature=0.1,
                 max_tokens=512,
-                # Disable thinking mode + limit context window to reduce VRAM usage
                 extra_body={
                     "think": False,
                     "options": {"num_ctx": 2048},
                 },
-            )
-            raw = response.choices[0].message.content or ""
+            ) as stream:
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        raw_chunks.append(delta)
+
+            raw = "".join(raw_chunks)
             data = _extract_json(raw)
 
             criticality = float(data["criticality"])
