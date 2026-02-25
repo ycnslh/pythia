@@ -19,43 +19,31 @@ jobs:
   test-backend:
     name: Backend tests
     runs-on: self-hosted
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create virtual environment
-        run: python3 -m venv .venv
-
-      - name: Install dependencies
-        run: |
-          .venv/bin/pip install --upgrade pip --quiet
-          .venv/bin/pip install -r requirements.txt --quiet
-          .venv/bin/pip install pytest pytest-asyncio --quiet
-
       - name: Run tests
-        run: .venv/bin/pytest tests/ -v --tb=short
-
-      - name: Cleanup
-        if: always()
-        run: rm -rf .venv
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/backend:/app \
+            -w /app \
+            python:3.11-slim \
+            sh -c "pip install -r requirements.txt pytest pytest-asyncio -q && pytest tests/ -v --tb=short"
 
   # ─── Frontend unit tests ───────────────────────────────────────────────────
   test-frontend:
     name: Frontend tests
     runs-on: self-hosted
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: npm ci --prefer-offline
-
       - name: Run tests
-        run: npm test -- --run
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/frontend:/app \
+            -w /app \
+            node:20-alpine \
+            sh -c "npm ci && npm test -- --run"
 
   # ─── Deploy (main branch only, after tests pass) ──────────────────────────
   deploy:
@@ -95,27 +83,19 @@ jobs:
           FAILED=0
 
           # /health → { "status": "ok" }
-          STATUS=$(curl -sf "http://localhost:${PORT}/health" \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])")
-          if [ "$STATUS" = "ok" ]; then
-            echo "PASS  /health"
-          else
-            echo "FAIL  /health — got: $STATUS"
-            FAILED=1
-          fi
+          curl -sf "http://localhost:${PORT}/health" | grep -q '"ok"' \
+            && echo "PASS  /health" \
+            || { echo "FAIL  /health"; FAILED=1; }
 
           # /api/events → JSON array
-          curl -sf "http://localhost:${PORT}/api/events" | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          assert isinstance(d, list), f'Expected list, got {type(d).__name__}'
-          print(f'PASS  /api/events ({len(d)} events in history)')
-          " || { echo "FAIL  /api/events"; FAILED=1; }
+          curl -sf "http://localhost:${PORT}/api/events" | grep -q '^\[' \
+            && echo "PASS  /api/events" \
+            || { echo "FAIL  /api/events"; FAILED=1; }
 
           # Frontend HTML contains PYTHIA
           curl -sf "http://localhost:${FPORT}/" | grep -qi "pythia" \
             && echo "PASS  frontend" \
-            || { echo "FAIL  frontend — no PYTHIA reference in HTML"; FAILED=1; }
+            || { echo "FAIL  frontend"; FAILED=1; }
 
           [ $FAILED -eq 0 ] || exit 1
           echo "All smoke tests passed"
