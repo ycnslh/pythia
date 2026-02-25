@@ -111,7 +111,7 @@ jobs:
             && echo "PASS  /health" \
             || { echo "FAIL  /health"; FAILED=1; }
 
-          curl -sf "http://localhost:${PORT}/api/events" | grep -q '^\[' \
+          curl -sf "http://localhost:${PORT}/api/events" | grep -q '"events"' \
             && echo "PASS  /api/events" \
             || { echo "FAIL  /api/events"; FAILED=1; }
 
