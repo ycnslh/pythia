@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 client = AsyncOpenAI(
     base_url=f"{settings.ollama_url}/v1",
     api_key="ollama",  # Ollama does not require a real key
+    timeout=120.0,  # Model cold-start on Jetson can be slow
 )
 
 SYSTEM_PROMPTS = {
@@ -102,8 +103,12 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0.1,
-                # Disable thinking mode for compatible models (Qwen3 etc.)
-                extra_body={"think": False},
+                max_tokens=512,
+                # Disable thinking mode + limit context window to reduce VRAM usage
+                extra_body={
+                    "think": False,
+                    "options": {"num_ctx": 2048},
+                },
             )
             raw = response.choices[0].message.content or ""
             data = _extract_json(raw)
