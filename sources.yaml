@@ -1,0 +1,26 @@
+sources:
+  # ── RSS feeds ──────────────────────────────────────────────────────────────
+  - type: rss
+    name: BBC World News
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    interval: 300  # seconds
+
+  - type: rss
+    name: Reuters World
+    url: https://feeds.reuters.com/reuters/worldNews
+    interval: 300
+
+  # ── Uptime Kuma ────────────────────────────────────────────────────────────
+  # Uncomment and configure if you have an Uptime Kuma instance
+  # - type: uptime_kuma
+  #   name: Homelab Monitor
+  #   url: http://uptime-kuma:3001
+  #   slug: default          # slug of the status page to monitor
+  #   # api_key: YOUR_KEY    # optional, if required
+  #   interval: 60
+
+  # ── Webhooks ───────────────────────────────────────────────────────────────
+  # Each webhook becomes a POST endpoint on the backend
+  # - type: webhook
+  #   name: Custom Alerts
+  #   path: /webhook/alerts  # POST http://pythia-backend:8000/webhook/alerts

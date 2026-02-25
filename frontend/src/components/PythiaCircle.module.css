@@ -1,0 +1,4 @@
+.canvas {
+  display: block;
+  /* Size is set dynamically by the component */
+}

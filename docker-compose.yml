@@ -1,0 +1,40 @@
+services:
+
+  pythia-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pythia-backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # sources.yaml is read at runtime — mount read-only
+      - ./sources.yaml:/app/sources.yaml:ro
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    # Conservative memory ceiling for Jetson Orin Nano Super
+    # Adjust upward if you have RAM to spare
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  pythia-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Language is baked into the JS bundle at build time
+        VITE_LANGUAGE: ${PYTHIA_LANGUAGE:-en}
+    container_name: pythia-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      pythia-backend:
+        condition: service_healthy
+    mem_limit: 64m
+    memswap_limit: 64m

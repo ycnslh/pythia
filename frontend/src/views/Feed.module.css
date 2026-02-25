@@ -1,0 +1,121 @@
+.feed {
+  min-height: 100vh;
+  background: var(--color-bg);
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  letter-spacing: 0.3em;
+  opacity: 0.8;
+}
+
+.wsStatus {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.2em;
+}
+.wsStatus[data-status="connected"] { color: rgba(255, 255, 255, 0.6); }
+.wsStatus[data-status="connecting"] { color: rgba(255, 200, 50, 0.7); }
+.wsStatus[data-status="disconnected"] { color: rgba(255, 80, 80, 0.7); }
+
+/* ── List ── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.empty {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.2em;
+  opacity: 0.25;
+  margin-top: 4rem;
+  text-align: center;
+}
+
+/* ── Card ── */
+.card {
+  border: 1px solid var(--color-border);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.badge {
+  font-size: var(--font-size-sm);
+  font-weight: bold;
+  padding: 0.1rem 0.5rem;
+  letter-spacing: 0.05em;
+  border: 1px solid currentColor;
+}
+
+.badgeNominal      { color: var(--color-nominal); }
+.badgeScrutiny     { color: var(--color-scrutiny); }
+.badgeDivergence   { color: var(--color-divergence); }
+.badgeIntervention { color: var(--color-intervention); }
+.badgeCritical     { color: var(--color-critical); }
+
+.category {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.15em;
+  opacity: 0.5;
+  flex: 1;
+}
+
+.time {
+  font-size: var(--font-size-xs);
+  opacity: 0.3;
+  white-space: nowrap;
+}
+
+.cardTitle {
+  font-size: var(--font-size-base);
+  font-weight: normal;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
+.cardTitle a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--color-faint);
+}
+
+.summary {
+  font-size: var(--font-size-sm);
+  opacity: 0.55;
+  line-height: 1.6;
+}
+
+.meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: var(--font-size-xs);
+  opacity: 0.35;
+  letter-spacing: 0.1em;
+}
+
+.meta strong {
+  opacity: 0.8;
+  font-weight: normal;
+}

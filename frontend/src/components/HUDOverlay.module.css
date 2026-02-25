@@ -1,0 +1,92 @@
+.hud {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2rem;
+  pointer-events: none;
+}
+
+/* ── Top bar ── */
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.systemName {
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.3em;
+  opacity: 0.9;
+}
+
+.subtitle {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.25em;
+  opacity: 0.35;
+}
+
+/* ── Center ── */
+.center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.nominal {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.2em;
+  opacity: 0.3;
+}
+
+.analyzing {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.25em;
+  opacity: 0.8;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.2; }
+}
+
+/* ── Data panel ── */
+.dataPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.dataRow {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.dataLabel {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.2em;
+  opacity: 0.35;
+  min-width: 7rem;
+}
+
+.dataValue {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+}
+
+.dataValueAccent {
+  font-size: var(--font-size-lg);
+  letter-spacing: 0.05em;
+  opacity: 1;
+}
+
+.summary {
+  font-size: var(--font-size-base);
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
