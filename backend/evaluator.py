@@ -98,7 +98,7 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
         try:
             # Use streaming to avoid timeout waiting for full response on slow hardware
             raw_chunks: list[str] = []
-            async with client.chat.completions.stream(
+            stream = await client.chat.completions.create(
                 model=settings.ollama_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -110,11 +110,12 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
                     "think": False,
                     "options": {"num_ctx": 2048},
                 },
-            ) as stream:
-                async for chunk in stream:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        raw_chunks.append(delta)
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    raw_chunks.append(delta)
 
             raw = "".join(raw_chunks)
             data = _extract_json(raw)

@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -24,18 +24,12 @@ class FakeChunk:
 
 
 class FakeStream:
-    """Async context manager + async iterator simulating OpenAI streaming."""
+    """Async iterator simulating OpenAI streaming (create with stream=True)."""
 
     def __init__(self, text: str):
         # Split into small chunks to simulate partial delivery
         self._chunks = [text[i : i + 40] for i in range(0, len(text), 40)]
         self._idx = 0
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        pass
 
     def __aiter__(self):
         return self
@@ -115,7 +109,7 @@ def test_extract_json_raises_on_empty():
 
 async def test_evaluate_happy_path(raw_event):
     with patch("evaluator.client") as mock_client:
-        mock_client.chat.completions.stream.return_value = FakeStream(VALID_LLM_RESPONSE)
+        mock_client.chat.completions.create = AsyncMock(return_value=FakeStream(VALID_LLM_RESPONSE))
 
         result = await evaluate(raw_event)
 
@@ -130,25 +124,25 @@ async def test_evaluate_happy_path(raw_event):
 
 async def test_evaluate_retries_on_invalid_json(raw_event):
     with patch("evaluator.client") as mock_client:
-        mock_client.chat.completions.stream.side_effect = [
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
             FakeStream("not valid json"),
             FakeStream(VALID_LLM_RESPONSE),
-        ]
+        ])
 
         result = await evaluate(raw_event, retries=2)
 
     assert result is not None
-    assert mock_client.chat.completions.stream.call_count == 2
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 async def test_evaluate_returns_none_when_all_attempts_fail(raw_event):
     with patch("evaluator.client") as mock_client:
-        mock_client.chat.completions.stream.return_value = FakeStream("bad response")
+        mock_client.chat.completions.create = AsyncMock(return_value=FakeStream("bad response"))
 
         result = await evaluate(raw_event, retries=1)
 
     assert result is None
-    assert mock_client.chat.completions.stream.call_count == 2  # 1 + 1 retry
+    assert mock_client.chat.completions.create.call_count == 2  # 1 + 1 retry
 
 
 async def test_evaluate_falls_back_to_event_title_when_missing(raw_event):
@@ -158,7 +152,7 @@ async def test_evaluate_falls_back_to_event_title_when_missing(raw_event):
         '"summary": "Summary.", "source": "S", "timestamp": "2025-01-01T00:00:00Z"}'
     )
     with patch("evaluator.client") as mock_client:
-        mock_client.chat.completions.stream.return_value = FakeStream(response_no_title)
+        mock_client.chat.completions.create = AsyncMock(return_value=FakeStream(response_no_title))
 
         result = await evaluate(raw_event)
 
