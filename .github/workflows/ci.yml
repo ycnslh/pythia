@@ -75,6 +75,9 @@ jobs:
       - name: Load .env
         run: cp ~/.pythia.env .env
 
+      - name: Stop existing containers
+        run: docker compose down --remove-orphans 2>/dev/null || true
+
       - name: Build and start containers
         run: docker compose up --build -d
 
