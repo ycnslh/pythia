@@ -82,13 +82,13 @@ jobs:
 
       - name: Build and start containers
         run: |
-          set -a && source .env && set +a
+          unset BACKEND_PORT FRONTEND_PORT PYTHIA_LANGUAGE CRITICALITY_THRESHOLD OLLAMA_URL OLLAMA_MODEL
           docker compose up --build -d
 
       - name: Wait for backend health
         run: |
-          set -a && source .env && set +a
-          PORT="${BACKEND_PORT:-8082}"
+          PORT=$(grep '^BACKEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
+          PORT="${PORT:-8082}"
           echo "Waiting for backend on port $PORT..."
           for i in $(seq 1 18); do
             if curl -sf "http://localhost:${PORT}/health" > /dev/null; then
@@ -104,9 +104,10 @@ jobs:
 
       - name: Smoke tests
         run: |
-          set -a && source .env && set +a
-          PORT="${BACKEND_PORT:-8082}"
-          FPORT="${FRONTEND_PORT:-8081}"
+          PORT=$(grep '^BACKEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
+          PORT="${PORT:-8082}"
+          FPORT=$(grep '^FRONTEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
+          FPORT="${FPORT:-8081}"
           FAILED=0
 
           # /health → { "status": "ok" }
