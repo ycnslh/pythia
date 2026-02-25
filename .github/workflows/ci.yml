@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
 
-# Cancel in-progress runs on new pushes to the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -81,9 +80,7 @@ jobs:
           docker rm pythia-frontend pythia-backend 2>/dev/null || true
 
       - name: Build and start containers
-        run: |
-          unset BACKEND_PORT FRONTEND_PORT PYTHIA_LANGUAGE CRITICALITY_THRESHOLD OLLAMA_URL OLLAMA_MODEL
-          docker compose up --build -d
+        run: docker compose up --build -d
 
       - name: Wait for backend health
         run: |
@@ -110,17 +107,14 @@ jobs:
           FPORT="${FPORT:-8081}"
           FAILED=0
 
-          # /health → { "status": "ok" }
           curl -sf "http://localhost:${PORT}/health" | grep -q '"ok"' \
             && echo "PASS  /health" \
             || { echo "FAIL  /health"; FAILED=1; }
 
-          # /api/events → JSON array
           curl -sf "http://localhost:${PORT}/api/events" | grep -q '^\[' \
             && echo "PASS  /api/events" \
             || { echo "FAIL  /api/events"; FAILED=1; }
 
-          # Frontend HTML contains PYTHIA
           curl -sf "http://localhost:${FPORT}/" | grep -qi "pythia" \
             && echo "PASS  frontend" \
             || { echo "FAIL  frontend"; FAILED=1; }
