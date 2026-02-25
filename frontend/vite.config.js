@@ -4,6 +4,10 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // i18n files are pure JS — no DOM required
+    environment: "node",
+  },
   resolve: {
     alias: {
       // Absolute imports from src/
