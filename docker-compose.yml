@@ -12,6 +12,10 @@ services:
       - ./sources.yaml:/app/sources.yaml:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    # Allows the container to reach Ollama running natively on the host
+    # Set OLLAMA_URL=http://host.docker.internal:11434 in .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Conservative memory ceiling for Jetson Orin Nano Super
     # Adjust upward if you have RAM to spare
     mem_limit: 256m
