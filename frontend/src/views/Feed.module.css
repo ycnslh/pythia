@@ -26,9 +26,9 @@
   font-size: var(--font-size-xs);
   letter-spacing: 0.2em;
 }
-.wsStatus[data-status="connected"] { color: rgba(255, 255, 255, 0.6); }
-.wsStatus[data-status="connecting"] { color: rgba(255, 200, 50, 0.7); }
-.wsStatus[data-status="disconnected"] { color: rgba(255, 80, 80, 0.7); }
+.wsStatus[data-status="connected"] { color: rgba(20, 20, 20, 0.45); }
+.wsStatus[data-status="connecting"] { color: rgba(100, 60, 0, 0.7); }
+.wsStatus[data-status="disconnected"] { color: rgba(80, 10, 10, 0.7); }
 
 /* ── List ── */
 .list {

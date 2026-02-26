@@ -11,23 +11,31 @@ function displayDuration(criticality) {
   return 10_000;
 }
 
+// Gap between events — circle returns to bare idle before showing next
+const GAP_MS = 2_000;
+
 export default function Display({ t }) {
   const { lastEvent } = useContext(WSContext);
 
   // Queue of events pending display, sorted by criticality desc
   const pendingRef = useRef([]);
   const timerRef = useRef(null);
+  const gapTimerRef = useRef(null); // non-null while in the inter-event gap
 
   const [circleState, setCircleState] = useState("idle");
   const [currentEvent, setCurrentEvent] = useState(null);
+  const [queueSize, setQueueSize] = useState(0);
 
   // Enqueue incoming events
   useEffect(() => {
     if (!lastEvent) return;
     pendingRef.current.push(lastEvent);
-    // Keep highest criticality first
+    // Highest criticality first
     pendingRef.current.sort((a, b) => b.criticality - a.criticality);
-    if (circleState === "idle") {
+    setQueueSize(pendingRef.current.length);
+
+    // Only auto-advance if circle is truly idle (not in gap, not busy)
+    if (circleState === "idle" && !gapTimerRef.current) {
       advance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,16 +43,18 @@ export default function Display({ t }) {
 
   function advance() {
     const next = pendingRef.current.shift();
+    setQueueSize(pendingRef.current.length);
+
     if (!next) {
       setCircleState("idle");
       setCurrentEvent(null);
       return;
     }
+
     setCurrentEvent(next);
     setCircleState("analyzing");
 
-    // Simulate brief analyzing phase, then show divergence
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       setCircleState("divergence");
       timerRef.current = setTimeout(() => {
         setCircleState("returning");
@@ -54,7 +64,17 @@ export default function Display({ t }) {
 
   function handleReturnComplete() {
     clearTimeout(timerRef.current);
-    advance();
+    // Clear HUD — circle visually returns to bare idle
+    setCurrentEvent(null);
+    setCircleState("idle");
+
+    if (pendingRef.current.length > 0) {
+      // Brief pause before next event so the circle "breathes"
+      gapTimerRef.current = setTimeout(() => {
+        gapTimerRef.current = null;
+        advance();
+      }, GAP_MS);
+    }
   }
 
   return (
@@ -62,6 +82,7 @@ export default function Display({ t }) {
       <PythiaCircle
         state={circleState}
         criticality={currentEvent?.criticality ?? 0}
+        queueSize={queueSize}
         onReturnComplete={handleReturnComplete}
       />
       <HUDOverlay t={t} event={currentEvent} state={circleState} />

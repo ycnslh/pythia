@@ -2,47 +2,61 @@ import { useRef, useEffect } from "react";
 import styles from "src/components/PythiaCircle.module.css";
 
 /**
- * Canvas-based animated circle.
+ * Canvas-based stipple ring animation.
  *
  * Props:
- *   state        — "idle" | "analyzing" | "divergence" | "returning"
- *   criticality  — number 1–10
+ *   state          — "idle" | "analyzing" | "divergence" | "returning"
+ *   criticality    — number 1–10
+ *   queueSize      — number of pending events (adds compound distortion)
  *   onReturnComplete — called when the "returning" animation finishes
  */
-export default function PythiaCircle({ state, criticality = 0, onReturnComplete }) {
+
+const N_DOTS = 720;
+const RETURN_DUR = 2.5;
+
+function initDots() {
+  const dots = [];
+  for (let i = 0; i < N_DOTS; i++) {
+    // Triangle distribution: two randoms summed → peak at 0, range [-1, 1]
+    const sf = Math.random() - Math.random();
+    dots.push({
+      // Slight angular jitter so the ring doesn't look perfectly quantized
+      baseAngle: (i / N_DOTS) * Math.PI * 2 + (Math.random() - 0.5) * 0.009,
+      spreadFactor: sf,                           // radial position within ring thickness
+      phase: Math.random() * Math.PI * 2,         // individual breathing offset
+      size: Math.random() * 0.75 + 0.45 + Math.abs(sf) * 0.2,
+      baseOpacity: Math.random() * 0.22 + 0.72,
+    });
+  }
+  return dots;
+}
+
+export default function PythiaCircle({ state, criticality = 0, queueSize = 0, onReturnComplete }) {
   const canvasRef = useRef(null);
   const stateRef = useRef(state);
   const critRef = useRef(criticality);
+  const queueRef = useRef(queueSize);
   const frameRef = useRef(null);
   const startRef = useRef(Date.now());
-  const particlesRef = useRef([]);
+  const dotsRef = useRef(null);
   const returnNotifiedRef = useRef(false);
 
-  // Keep refs in sync with props
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { critRef.current = criticality; }, [criticality]);
+  useEffect(() => { queueRef.current = queueSize; }, [queueSize]);
 
-  // Reset timer and particles when state changes
+  // Reset phase timer on state change
   useEffect(() => {
     startRef.current = Date.now();
     returnNotifiedRef.current = false;
+  }, [state]);
 
-    if (state === "divergence") {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      particlesRef.current = spawnParticles(cx, cy, criticality);
-    }
-    if (state === "idle" || state === "analyzing") {
-      particlesRef.current = [];
-    }
-  }, [state, criticality]);
-
-  // Animation loop
+  // Animation loop — runs once for lifetime of component
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    if (!dotsRef.current) dotsRef.current = initDots();
 
     const handleResize = () => {
       const size = Math.min(window.innerWidth, window.innerHeight) * 0.6;
@@ -54,35 +68,98 @@ export default function PythiaCircle({ state, criticality = 0, onReturnComplete 
 
     const loop = () => {
       const ctx = canvas.getContext("2d");
+      const W = canvas.width;
+      const H = canvas.height;
+      const cx = W / 2;
+      const cy = H / 2;
+      const baseR = W * 0.38;
       const t = (Date.now() - startRef.current) / 1000;
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const baseRadius = canvas.width * 0.35;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const currentState = stateRef.current;
+      const s = stateRef.current;
       const crit = critRef.current;
+      const queue = queueRef.current;
 
-      if (currentState === "idle") {
-        drawIdle(ctx, cx, cy, baseRadius, t);
-      } else if (currentState === "analyzing") {
-        drawAnalyzing(ctx, cx, cy, baseRadius, t);
-      } else if (currentState === "divergence") {
-        drawDivergence(ctx, cx, cy, baseRadius, t, crit);
-      } else if (currentState === "returning") {
-        const done = drawReturning(ctx, cx, cy, baseRadius, t, crit);
-        if (done && !returnNotifiedRef.current) {
+      ctx.clearRect(0, 0, W, H);
+
+      // ── Distortion and spread per state ─────────────────────────────────────
+      // distortion: amplitude of the sine-wave deformation (0 = perfect circle)
+      // dotSpread:  ring thickness in px (how far dots scatter radially)
+      let distortion = 0.06; // idle baseline — slightly organic, never perfectly round
+      let dotSpread = 3.5;
+
+      if (s === "idle") {
+        distortion = 0.06;
+        dotSpread = 3.5;
+      } else if (s === "analyzing") {
+        const prog = Math.min(t / 3, 1);
+        distortion = 0.06 + prog * 0.36;
+        dotSpread = 3.5 + prog * 9;
+      } else if (s === "divergence") {
+        const intensity = crit / 10;
+        distortion = 0.4 + intensity * 0.6;
+        dotSpread = 4 + intensity * 22;
+      } else if (s === "returning") {
+        const prog = Math.min(t / RETURN_DUR, 1);
+        const intensity = crit / 10;
+        // Ease cubic out: starts fast, slows at end
+        const ease = 1 - Math.pow(1 - prog, 3);
+        distortion = 0.06 + (1 - ease) * (0.4 + intensity * 0.6 - 0.06);
+        dotSpread = 3.5 + (1 - ease) * (4 + intensity * 22 - 3.5);
+
+        if (prog >= 1 && !returnNotifiedRef.current) {
           returnNotifiedRef.current = true;
           onReturnComplete?.();
         }
+      }
+
+      // Queue backpressure adds compound distortion
+      const queueBonus = Math.min(queue * 0.07, 0.35);
+      distortion += queueBonus;
+      dotSpread += queue * 1.3;
+
+      // ── Draw dots ──────────────────────────────────────────────────────────
+      const dots = dotsRef.current;
+      for (const dot of dots) {
+        const angle = dot.baseAngle;
+
+        // Multi-frequency sinusoidal deformation
+        const d1 = Math.sin(angle * 3  + t * 0.7)  * distortion * baseR * 0.09;
+        const d2 = Math.sin(angle * 7  - t * 1.3)  * distortion * baseR * 0.045;
+        const d3 = Math.sin(angle * 17 + t * 0.55) * distortion * baseR * 0.022;
+        const d4 = Math.sin(angle * 31 - t * 2.1)  * distortion * baseR * 0.01;
+
+        // Slow individual breathing (each dot has its own phase)
+        const breathe = Math.sin(t * 0.45 + dot.phase) * 1.8;
+
+        // Final radial position: base + spread within ring + deformation + breathing
+        const r = baseR + dot.spreadFactor * dotSpread + breathe + d1 + d2 + d3 + d4;
+        const x = cx + Math.cos(angle) * r;
+        const y = cy + Math.sin(angle) * r;
+
+        // Opacity: falls off toward ring edges → tapered ring cross-section
+        const edgeFalloff = 1 - Math.abs(dot.spreadFactor) * 0.55;
+        const stateAlpha = s === "idle" ? 0.72 : 0.95;
+        const alpha = dot.baseOpacity * edgeFalloff * stateAlpha;
+
+        // Dot size grows slightly with distortion
+        const sz = dot.size * (1 + (distortion - 0.06) * 0.45);
+
+        // Color: monochrome baseline; dark tint only at high criticality in divergence
+        let r0 = 15, g0 = 15, b0 = 15;
+        if (s === "divergence" || s === "returning") {
+          if (crit >= 8) { r0 = 72; g0 = 8; b0 = 8; }
+          else if (crit >= 6) { r0 = 42; g0 = 18; b0 = 8; }
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, sz, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r0},${g0},${b0},${alpha})`;
+        ctx.fill();
       }
 
       frameRef.current = requestAnimationFrame(loop);
     };
 
     frameRef.current = requestAnimationFrame(loop);
-
     return () => {
       cancelAnimationFrame(frameRef.current);
       window.removeEventListener("resize", handleResize);
@@ -90,168 +167,4 @@ export default function PythiaCircle({ state, criticality = 0, onReturnComplete 
   }, [onReturnComplete]);
 
   return <canvas ref={canvasRef} className={styles.canvas} />;
-}
-
-// ─── Drawing helpers ──────────────────────────────────────────────────────────
-
-function drawCirclePath(ctx, cx, cy, radius, t, distortion = 0, steps = 180) {
-  ctx.beginPath();
-  for (let i = 0; i <= steps; i++) {
-    const angle = (i / steps) * Math.PI * 2;
-    const noise =
-      distortion > 0
-        ? Math.sin(angle * 3 + t * 0.7) * distortion * radius * 0.08 +
-          Math.sin(angle * 7 - t * 1.1) * distortion * radius * 0.04 +
-          Math.sin(angle * 13 + t * 0.4) * distortion * radius * 0.02
-        : 0;
-    const r = radius + noise;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
-function drawGlow(ctx, cx, cy, radius, opacity, color = "255,255,255") {
-  const grad = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, radius * 1.3);
-  grad.addColorStop(0, `rgba(${color},${opacity * 0.2})`);
-  grad.addColorStop(1, `rgba(${color},0)`);
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius * 1.3, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawIdle(ctx, cx, cy, radius, t) {
-  const pulse = 1 + Math.sin(t * 0.8) * 0.015;
-  const r = radius * pulse;
-  const opacity = 0.55 + Math.sin(t * 0.8) * 0.1;
-
-  drawGlow(ctx, cx, cy, r, opacity * 0.4);
-  drawCirclePath(ctx, cx, cy, r, t);
-  ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-}
-
-function drawAnalyzing(ctx, cx, cy, radius, t) {
-  // Ink-spread distortion grows over time, capped at 1.0
-  const distortion = Math.min(t / 4, 1.0);
-  const opacity = 0.75 + Math.sin(t * 3) * 0.1;
-
-  drawGlow(ctx, cx, cy, radius, 0.5);
-  drawCirclePath(ctx, cx, cy, radius, t, distortion);
-  ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Scanning dash
-  const dashAngle = (t * 1.2) % (Math.PI * 2);
-  const dashLen = radius * 0.15;
-  ctx.beginPath();
-  ctx.moveTo(cx + radius * Math.cos(dashAngle), cy + radius * Math.sin(dashAngle));
-  ctx.lineTo(
-    cx + (radius + dashLen) * Math.cos(dashAngle),
-    cy + (radius + dashLen) * Math.sin(dashAngle)
-  );
-  ctx.strokeStyle = "rgba(255,255,255,0.9)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-}
-
-function drawDivergence(ctx, cx, cy, radius, t, criticality) {
-  const intensity = criticality / 10;
-
-  // Update and draw particles
-  const dt = 1 / 60;
-  particlesRef.current = particlesRef.current
-    .map((p) => ({
-      ...p,
-      x: p.x + p.vx,
-      y: p.y + p.vy,
-      vx: p.vx * 0.97,
-      vy: p.vy * 0.97,
-      life: p.life - dt * 0.6,
-    }))
-    .filter((p) => p.life > 0);
-
-  for (const p of particlesRef.current) {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = critColor(criticality);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // Distorted circle
-  const distortion = intensity * (1 + Math.sin(t * 5) * 0.2);
-  drawGlow(ctx, cx, cy, radius, 0.7, critColorRGB(criticality));
-  drawCirclePath(ctx, cx, cy, radius, t, distortion);
-  ctx.strokeStyle = critColor(criticality);
-  ctx.lineWidth = 2;
-  ctx.stroke();
-}
-
-function drawReturning(ctx, cx, cy, radius, t, criticality) {
-  const RETURN_DURATION = 2.5;
-  const progress = Math.min(t / RETURN_DURATION, 1);
-  const distortion = (1 - progress) * (criticality / 10);
-  const opacity = 0.3 + progress * 0.25;
-
-  // Fade particles out
-  particlesRef.current = particlesRef.current
-    .map((p) => ({ ...p, life: p.life - 0.02 }))
-    .filter((p) => p.life > 0);
-
-  for (const p of particlesRef.current) {
-    ctx.globalAlpha = p.life * (1 - progress);
-    ctx.fillStyle = "white";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  drawGlow(ctx, cx, cy, radius, opacity * 0.3);
-  drawCirclePath(ctx, cx, cy, radius, t, distortion);
-  ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
-  ctx.lineWidth = 1 + (1 - progress);
-  ctx.stroke();
-
-  return progress >= 1;
-}
-
-// ─── Particles ────────────────────────────────────────────────────────────────
-
-function spawnParticles(cx, cy, criticality) {
-  const count = Math.floor(20 + criticality * 8);
-  const speedBase = criticality * 0.4;
-  return Array.from({ length: count }, () => {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = (Math.random() * 0.6 + 0.4) * speedBase;
-    return {
-      x: cx,
-      y: cy,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 1.0,
-      size: Math.random() * 2.5 + 0.5,
-    };
-  });
-}
-
-// ─── Color helpers ────────────────────────────────────────────────────────────
-
-function critColorRGB(criticality) {
-  if (criticality >= 8) return "255,32,32";
-  if (criticality >= 6) return "255,107,53";
-  return "255,255,255";
-}
-
-function critColor(criticality) {
-  if (criticality >= 8) return "#ff2020";
-  if (criticality >= 6) return "#ff6b35";
-  return "#ffffff";
 }

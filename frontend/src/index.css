@@ -7,18 +7,18 @@
 }
 
 :root {
-  --color-bg: #050505;
-  --color-primary: #ffffff;
-  --color-dim: rgba(255, 255, 255, 0.4);
-  --color-faint: rgba(255, 255, 255, 0.15);
-  --color-border: rgba(255, 255, 255, 0.08);
+  --color-bg: #ebebeb;
+  --color-primary: #1a1a1a;
+  --color-dim: rgba(20, 20, 20, 0.4);
+  --color-faint: rgba(20, 20, 20, 0.15);
+  --color-border: rgba(20, 20, 20, 0.12);
 
-  /* Criticality color bands — monochrome to red */
-  --color-nominal: rgba(255, 255, 255, 0.5);
-  --color-scrutiny: rgba(255, 255, 255, 0.8);
-  --color-divergence: #ffffff;
-  --color-intervention: #ff6b35;
-  --color-critical: #ff2020;
+  /* Criticality color bands — monochrome to deep red */
+  --color-nominal: rgba(20, 20, 20, 0.4);
+  --color-scrutiny: rgba(20, 20, 20, 0.65);
+  --color-divergence: #1a1a1a;
+  --color-intervention: #7a2800;
+  --color-critical: #5c0000;
 
   --font-mono: "Courier New", Courier, monospace;
   --font-size-xs: 0.65rem;
@@ -47,5 +47,5 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-faint);
+  background: rgba(20, 20, 20, 0.18);
 }
