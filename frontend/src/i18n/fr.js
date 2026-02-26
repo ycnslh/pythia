@@ -1,4 +1,5 @@
 export default {
+  locale: "fr-FR",
   systemName: "PYTHIA",
   subtitle: "ANALYSE DES DIVERGENCES",
   criticality: "CRITICITÉ",

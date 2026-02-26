@@ -1,4 +1,4 @@
-import { createContext, useMemo } from "react";
+import { createContext } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useWebSocket } from "src/hooks/useWebSocket";
 import Display from "src/views/Display";

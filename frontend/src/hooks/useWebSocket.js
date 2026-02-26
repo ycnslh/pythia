@@ -44,7 +44,7 @@ export function useWebSocket() {
       try {
         const event = JSON.parse(msg.data);
         setLastEvent(event);
-        setEventHistory((prev) => [event, ...prev]);
+        setEventHistory((prev) => [event, ...prev].slice(0, 100));
       } catch {
         // ignore malformed frames
       }
