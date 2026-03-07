@@ -118,8 +118,32 @@ async def test_evaluate_happy_path(raw_event):
     assert result.category == "DIVERGENCE"
     assert result.title == "Flood in Tokyo"
     assert result.location == "Tokyo, Japan"
-    assert result.timestamp == "2025-01-01T12:00:00Z"
+    # Timestamp comes from raw_data["published_at"] if available, else ingestion time.
+    # The fixture has no raw_data, so expect a current-time ISO string (not the LLM value).
+    assert result.timestamp != "2025-01-01T12:00:00Z"
+    assert "T" in result.timestamp  # valid ISO 8601
     assert result.url == raw_event.url
+
+
+async def test_evaluate_uses_published_at_from_raw_data():
+    """published_at in raw_data takes precedence over LLM timestamp and ingestion time."""
+    from models import RawEvent
+
+    event = RawEvent(
+        title="Flood in Tokyo",
+        description="Heavy rains.",
+        url="https://example.com/flood",
+        source_name="Test Source",
+        source_type="rss",
+        raw_data={"published_at": "2025-06-15T08:30:00+00:00"},
+    )
+    with patch("evaluator.client") as mock_client:
+        mock_client.chat.completions.create = AsyncMock(return_value=FakeStream(VALID_LLM_RESPONSE))
+
+        result = await evaluate(event)
+
+    assert result is not None
+    assert result.timestamp == "2025-06-15T08:30:00+00:00"
 
 
 async def test_evaluate_retries_on_invalid_json(raw_event):
