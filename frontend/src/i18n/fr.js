@@ -8,6 +8,10 @@ export default {
   source: "SOURCE",
   analyzing: "ANALYSE EN COURS...",
   nominal: "TOUS LES SYSTÈMES NOMINAUX",
+  // System panel
+  cpu: "CPU",
+  ram: "RAM",
+  sources: "SOURCES",
   // Feed
   feedTitle: "JOURNAL D'ÉVÉNEMENTS",
   noEvents: "AUCUN ÉVÉNEMENT ENREGISTRÉ",

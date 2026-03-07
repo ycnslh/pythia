@@ -9,6 +9,10 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Maps source name → True (healthy) / False (last poll failed).
+# Read by the /api/system endpoint.
+source_health: dict[str, bool] = {}
+
 
 async def _poll_source(source: BaseSource) -> None:
     interval: int = source.config.get("interval", 300)
@@ -18,6 +22,7 @@ async def _poll_source(source: BaseSource) -> None:
     while True:
         try:
             events = await source.fetch()
+            source_health[name] = True
             for raw_event in events:
                 evaluated = await evaluate(raw_event)
                 if evaluated is None:
@@ -42,6 +47,7 @@ async def _poll_source(source: BaseSource) -> None:
             logger.info("Polling cancelled for %s", name)
             return
         except Exception as e:
+            source_health[name] = False
             logger.error("Unhandled error polling %s: %s", name, e)
 
         await asyncio.sleep(interval)

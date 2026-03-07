@@ -8,6 +8,10 @@ export default {
   source: "SOURCE",
   analyzing: "ANALYZING...",
   nominal: "ALL SYSTEMS NOMINAL",
+  // System panel
+  cpu: "CPU",
+  ram: "RAM",
+  sources: "SOURCES",
   // Feed
   feedTitle: "EVENT LOG",
   noEvents: "NO EVENTS RECORDED",

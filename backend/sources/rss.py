@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+from datetime import datetime, timezone
 from typing import List, Set
 
 import feedparser
@@ -9,6 +10,18 @@ from models import RawEvent
 from sources.base import BaseSource
 
 logger = logging.getLogger(__name__)
+
+
+def _entry_published_at(entry) -> str | None:
+    """Return the entry's publication date as an ISO 8601 UTC string, or None."""
+    parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+    if parsed is None:
+        return None
+    try:
+        return datetime(*parsed[:6], tzinfo=timezone.utc).isoformat()
+    except Exception:
+        return None
+
 
 # Maximum entries processed per poll to avoid bursts
 MAX_ENTRIES = 5
@@ -60,7 +73,10 @@ class RSSSource(BaseSource):
                     url=entry.get("link"),
                     source_name=self.get_name(),
                     source_type=self.get_type(),
-                    raw_data={"feed_title": feed.feed.get("title", "")},
+                    raw_data={
+                        "feed_title": feed.feed.get("title", ""),
+                        "published_at": _entry_published_at(entry),
+                    },
                 )
             )
 

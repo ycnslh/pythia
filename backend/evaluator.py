@@ -128,7 +128,10 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
                 summary=data["summary"],
                 location=data.get("location"),
                 source=data.get("source", event.source_name),
-                timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                timestamp=(
+                    (event.raw_data or {}).get("published_at")
+                    or datetime.now(timezone.utc).isoformat()
+                ),
                 url=event.url,
             )
         except Exception as e:

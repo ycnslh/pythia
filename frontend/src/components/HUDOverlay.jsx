@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import styles from "src/components/HUDOverlay.module.css";
+import SystemPanel from "src/components/SystemPanel";
 
 /**
  * HUD text overlay displayed over the PythiaCircle.
@@ -105,11 +106,14 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
   return (
     <div className={styles.hud}>
 
-      {/* Brand — top-right, always dim */}
+      {/* Brand — top-right */}
       <div className={styles.brand}>
         <span className={styles.systemName}>{t.systemName}</span>
         <span className={styles.subtitle}>{t.subtitle}</span>
       </div>
+
+      {/* System status panel — below brand */}
+      <SystemPanel t={t} />
 
       {/* Analyzing indicator — same position as data block, fades in during analyzing */}
       <div

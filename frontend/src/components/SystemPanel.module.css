@@ -1,0 +1,125 @@
+.panel {
+  position: absolute;
+  top: 4.5rem;
+  right: 2rem;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  width: 200px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Clock ──────────────────────────────────────────────────────────────────── */
+.clock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.date {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.18em;
+  opacity: 0.45;
+}
+
+.time {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Divider ────────────────────────────────────────────────────────────────── */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(20, 20, 20, 0.12);
+  margin: 0.25rem 0;
+}
+
+/* ── CPU / RAM metrics ──────────────────────────────────────────────────────── */
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.15em;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.barTrack {
+  flex: 1;
+  height: 2px;
+  background: rgba(20, 20, 20, 0.1);
+  position: relative;
+  max-width: 80px;
+}
+
+.barFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: rgba(20, 20, 20, 0.5);
+  transition: width 1s ease;
+}
+
+.value {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5em;
+  text-align: right;
+}
+
+.ramDetail {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  opacity: 0.35;
+  text-align: right;
+}
+
+/* ── Sources ────────────────────────────────────────────────────────────────── */
+.sourcesLabel {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.2em;
+  opacity: 0.45;
+  margin-top: 0.05rem;
+}
+
+.sourceRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  font-size: var(--font-size-xs);
+}
+
+.dot {
+  font-size: 0.5em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sourceName {
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+  letter-spacing: 0.04em;
+}
+
+.sourceType {
+  opacity: 0.38;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}

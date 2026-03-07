@@ -19,13 +19,13 @@
 .systemName {
   font-size: var(--font-size-xs);
   letter-spacing: 0.35em;
-  opacity: 0.22;
+  opacity: 0.75;
 }
 
 .subtitle {
   font-size: var(--font-size-xs);
   letter-spacing: 0.2em;
-  opacity: 0.14;
+  opacity: 0.55;
 }
 
 /* ── Generic fade wrapper ──────────────────────────────────────────────────── */
