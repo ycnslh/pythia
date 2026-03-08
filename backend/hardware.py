@@ -22,22 +22,30 @@ logger = logging.getLogger(__name__)
 _THERMAL_BASE = Path("/sys/class/thermal")
 _JETSON_GPU_LOAD = Path("/sys/devices/gpu.0/load")
 
-# Thermal zone type names → canonical short keys for display.
-# Multiple raw names can map to the same key (they are averaged).
-_THERMAL_NAME_MAP: dict[str, str] = {
-    "cpu-thermal": "cpu",
-    "cpu": "cpu",
-    "CPU": "cpu",
-    "gpu": "gpu",
-    "GPU": "gpu",
-    "soc0": "soc",
-    "soc1": "soc",
-    "soc2": "soc",
-    "tj": "tj",
-}
-
-# Only surface these canonical keys (in this display order).
+# Canonical key display order.
 _THERMAL_KEYS_ORDERED = ["cpu", "gpu", "soc", "tj"]
+
+
+def _canonical_zone_name(raw_type: str) -> str | None:
+    """
+    Map a raw thermal zone type string to a canonical display key.
+
+    Uses case-insensitive substring matching so it covers all known variants:
+      Jetson Orin:  "BCPU-therm", "MCPU-therm", "GPU-therm",
+                    "SOC0-therm", "SOC1-therm", "SOC2-therm", "tj"
+      Raspberry Pi: "cpu-thermal"
+      Generic:      "cpu", "gpu", ...
+    """
+    t = raw_type.lower()
+    if "cpu" in t:
+        return "cpu"
+    if "gpu" in t:
+        return "gpu"
+    if "soc" in t:
+        return "soc"
+    if t == "tj":
+        return "tj"
+    return None
 
 
 def _read_thermal_zones() -> dict[str, float]:
@@ -50,7 +58,7 @@ def _read_thermal_zones() -> dict[str, float]:
     if not _THERMAL_BASE.exists():
         return {}
 
-    # Accumulate raw values; some keys may appear multiple times (e.g. soc0/soc1/soc2).
+    # Accumulate raw values; multiple zones can share a canonical key (averaged).
     accumulated: dict[str, list[float]] = {}
 
     for zone in sorted(_THERMAL_BASE.glob("thermal_zone*")):
@@ -65,7 +73,7 @@ def _read_thermal_zones() -> dict[str, float]:
         if temp_c <= 0 or temp_c >= 120:
             continue
 
-        canonical = _THERMAL_NAME_MAP.get(raw_type)
+        canonical = _canonical_zone_name(raw_type)
         if canonical is None:
             continue
 
