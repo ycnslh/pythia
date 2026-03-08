@@ -77,6 +77,17 @@ export default function SystemPanel({ t }) {
 
           <div className={styles.ramDetail}>{ramDetail}</div>
 
+          <div className={styles.metric}>
+            <span className={styles.label}>{t.disk}</span>
+            <div className={styles.barTrack}>
+              <div className={styles.barFill} style={{ width: `${sys.disk_pct}%` }} />
+            </div>
+            <span className={styles.value}>{sys.disk_pct.toFixed(0)}%</span>
+          </div>
+          <div className={styles.ramDetail}>
+            {sys.disk_used_gb} / {sys.disk_total_gb} GB
+          </div>
+
           {sys.gpu != null && (
             <div className={styles.metric}>
               <span className={styles.label}>{t.gpu}</span>

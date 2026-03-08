@@ -110,12 +110,17 @@ def _collect_metrics() -> dict:
     """Blocking: gather all hardware metrics. Run in an executor."""
     vm = psutil.virtual_memory()
 
+    disk = psutil.disk_usage("/")
+
     result: dict = {
         "cpu": psutil.cpu_percent(interval=0.1),
         "cpu_cores": psutil.cpu_percent(interval=None, percpu=True),
         "ram_pct": vm.percent,
         "ram_used_mb": vm.used // (1024 * 1024),
         "ram_total_mb": vm.total // (1024 * 1024),
+        "disk_pct": disk.percent,
+        "disk_used_gb": round(disk.used / (1024 ** 3), 1),
+        "disk_total_gb": round(disk.total / (1024 ** 3), 1),
     }
 
     gpu = _read_jetson_gpu()

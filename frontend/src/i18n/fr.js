@@ -12,6 +12,7 @@ export default {
   cpu: "CPU",
   ram: "RAM",
   gpu: "GPU",
+  disk: "DSK",
   temp: "TEMP",
   sources: "SOURCES",
   // Feed
