@@ -11,6 +11,8 @@ export default {
   // System panel
   cpu: "CPU",
   ram: "RAM",
+  gpu: "GPU",
+  temp: "TEMP",
   sources: "SOURCES",
   // Feed
   feedTitle: "JOURNAL D'ÉVÉNEMENTS",

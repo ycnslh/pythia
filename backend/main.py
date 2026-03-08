@@ -1,13 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 
-import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings, load_sources
 from event_queue import queue
 from evaluator import evaluate
+from hardware import get_metrics
 from scheduler import start_scheduler, source_health
 from sources import create_source
 from sources.webhook import build_webhook_router
@@ -76,9 +76,9 @@ async def get_events():
 @app.get("/api/system")
 async def system_status():
     """Return machine resource usage and source health status."""
-    vm = psutil.virtual_memory()
+    metrics = await get_metrics()
     source_configs = load_sources()
-    sources_info = [
+    metrics["sources"] = [
         {
             "name": s.get("name", "Unknown"),
             "type": s.get("type", "unknown"),
@@ -87,13 +87,7 @@ async def system_status():
         for s in source_configs
         if s.get("type") != "webhook"
     ]
-    return {
-        "cpu": psutil.cpu_percent(interval=0.1),
-        "ram_pct": vm.percent,
-        "ram_used_mb": vm.used // (1024 * 1024),
-        "ram_total_mb": vm.total // (1024 * 1024),
-        "sources": sources_info,
-    }
+    return metrics
 
 
 @app.websocket("/ws")

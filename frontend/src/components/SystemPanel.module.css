@@ -87,6 +87,34 @@
   text-align: right;
 }
 
+/* ── Temperature grid ───────────────────────────────────────────────────────── */
+.tempGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.1rem 0.6rem;
+  text-align: right;
+}
+
+.tempCell {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: var(--font-size-xs);
+}
+
+.tempLabel {
+  opacity: 0.4;
+  letter-spacing: 0.08em;
+}
+
+.tempValue {
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2em;
+  text-align: right;
+}
+
 /* ── Sources ────────────────────────────────────────────────────────────────── */
 .sourcesLabel {
   font-size: var(--font-size-xs);

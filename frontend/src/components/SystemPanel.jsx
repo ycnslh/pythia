@@ -77,6 +77,31 @@ export default function SystemPanel({ t }) {
 
           <div className={styles.ramDetail}>{ramDetail}</div>
 
+          {sys.gpu != null && (
+            <div className={styles.metric}>
+              <span className={styles.label}>{t.gpu}</span>
+              <div className={styles.barTrack}>
+                <div className={styles.barFill} style={{ width: `${sys.gpu}%` }} />
+              </div>
+              <span className={styles.value}>{sys.gpu.toFixed(0)}%</span>
+            </div>
+          )}
+
+          {sys.temps && Object.keys(sys.temps).length > 0 && (
+            <>
+              <div className={styles.divider} />
+              <div className={styles.sourcesLabel}>{t.temp}</div>
+              <div className={styles.tempGrid}>
+                {Object.entries(sys.temps).map(([key, val]) => (
+                  <div key={key} className={styles.tempCell}>
+                    <span className={styles.tempLabel}>{key}</span>
+                    <span className={styles.tempValue}>{val.toFixed(0)}°</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           {sys.sources?.length > 0 && (
             <>
               <div className={styles.divider} />
