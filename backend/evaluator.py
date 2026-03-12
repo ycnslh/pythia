@@ -10,10 +10,10 @@ from models import RawEvent, EvaluatedEvent
 
 logger = logging.getLogger(__name__)
 
-# OpenAI-compatible client pointing to Ollama (or any OpenAI-compatible LLM server)
+# OpenAI-compatible client — works with vLLM, Ollama, or any compatible server
 client = AsyncOpenAI(
-    base_url=f"{settings.ollama_url}/v1",
-    api_key="ollama",  # Ollama does not require a real key
+    base_url=f"{settings.llm_url}/v1",
+    api_key="pythia",  # vLLM accepts any non-empty key
     timeout=120.0,  # Model cold-start on Jetson can be slow
 )
 
@@ -99,17 +99,13 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
             # Use streaming to avoid timeout waiting for full response on slow hardware
             raw_chunks: list[str] = []
             stream = await client.chat.completions.create(
-                model=settings.ollama_model,
+                model=settings.llm_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0.1,
                 max_tokens=512,
-                extra_body={
-                    "think": False,
-                    "options": {"num_ctx": 2048},
-                },
                 stream=True,
             )
             async for chunk in stream:

@@ -5,9 +5,9 @@ import os
 
 
 class Settings(BaseSettings):
-    # Ollama — OpenAI-compatible endpoint
-    ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3"
+    # LLM — OpenAI-compatible endpoint (vLLM, Ollama, or any compatible server)
+    llm_url: str = "http://localhost:8080"
+    llm_model: str = "mistralai/Ministral-3-3B-Reasoning-2512"
 
     # Display
     pythia_language: str = "en"

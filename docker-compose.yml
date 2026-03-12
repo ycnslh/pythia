@@ -1,5 +1,25 @@
 services:
 
+  pythia-llm:
+    image: ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin
+    container_name: pythia-llm
+    runtime: nvidia
+    restart: unless-stopped
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    command: vllm serve ${LLM_MODEL} --dtype half --max-model-len 2048 --gpu-memory-utilization 0.6
+    ports:
+      - "8080:8000"
+    volumes:
+      # Named volume — model weights persist across container restarts
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
   pythia-backend:
     build:
       context: ./backend
@@ -12,10 +32,9 @@ services:
       - ./sources.yaml:/app/sources.yaml:ro
     ports:
       - "${BACKEND_PORT:-8082}:8000"
-    # Allows the container to reach Ollama running natively on the host
-    # Set OLLAMA_URL=http://host.docker.internal:11434 in .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      pythia-llm:
+        condition: service_healthy
     # Conservative memory ceiling for Jetson Orin Nano Super
     # Adjust upward if you have RAM to spare
     mem_limit: 256m
@@ -42,3 +61,6 @@ services:
         condition: service_healthy
     mem_limit: 64m
     memswap_limit: 64m
+
+volumes:
+  hf-cache:
