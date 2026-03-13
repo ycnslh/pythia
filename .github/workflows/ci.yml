@@ -79,8 +79,8 @@ jobs:
 
       - name: Stop existing containers
         run: |
-          docker stop pythia-frontend pythia-backend 2>/dev/null || true
-          docker rm pythia-frontend pythia-backend 2>/dev/null || true
+          docker stop pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
+          docker rm pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
 
       - name: Build and start containers
         run: docker compose up --build -d

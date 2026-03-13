@@ -5,9 +5,10 @@ import os
 
 
 class Settings(BaseSettings):
-    # LLM — OpenAI-compatible endpoint (vLLM, Ollama, or any compatible server)
-    llm_url: str = "http://localhost:8080"
-    llm_model: str = "mistralai/Ministral-3-3B-Reasoning-2512"
+    # LLM — OpenAI-compatible endpoint (OpenRouter or any compatible server)
+    llm_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    llm_api_key: str = ""
 
     # Display
     pythia_language: str = "en"

@@ -10,11 +10,11 @@ from models import RawEvent, EvaluatedEvent
 
 logger = logging.getLogger(__name__)
 
-# OpenAI-compatible client — works with vLLM, Ollama, or any compatible server
+# OpenAI-compatible client — works with OpenRouter or any compatible server
 client = AsyncOpenAI(
-    base_url=f"{settings.llm_url}/v1",
-    api_key="pythia",  # vLLM accepts any non-empty key
-    timeout=120.0,  # Model cold-start on Jetson can be slow
+    base_url=settings.llm_url,
+    api_key=settings.llm_api_key,
+    timeout=120.0,
 )
 
 SYSTEM_PROMPTS = {
