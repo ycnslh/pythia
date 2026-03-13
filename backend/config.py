@@ -1,3 +1,5 @@
+import logging
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import Any
 import yaml
@@ -18,6 +20,14 @@ class Settings(BaseSettings):
     backend_port: int = 8000
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode="after")
+    def check_required(self) -> "Settings":
+        if not self.llm_api_key:
+            logging.getLogger(__name__).warning(
+                "LLM_API_KEY is not set — LLM evaluation calls will fail with 401"
+            )
+        return self
 
 
 def load_sources() -> list[dict[str, Any]]:

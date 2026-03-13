@@ -127,17 +127,44 @@ docker compose ps
 
 ## 4. Verify the deployment
 
-```bash
-# Backend health
-curl http://localhost:8082/health
+Run these checks in order — each one must pass before moving to the next.
 
-# Frontend
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/display
+```bash
+# 1. All containers running and healthy?
+docker compose ps
+
+# 2. Backend health endpoint
+curl http://localhost:8082/health
+# Expected: {"status":"ok"}
+
+# 3. Events API responding
+curl http://localhost:8082/api/events
+# Expected: {"events":[...]}
+
+# 4. Frontend serving
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/
+# Expected: 200
+
+# 5. Watch backend logs to confirm LLM evaluation fires on the next RSS poll
+docker compose logs -f pythia-backend
+# Look for lines like: "Evaluated event: ..." or "All evaluation attempts failed"
+# If you see "LLM_API_KEY is not set": add it to ~/.pythia.env and redeploy
 ```
 
 Open in a browser:
 - Feed: `http://<jetson-ip>:8081/feed`
 - Display: `http://<jetson-ip>:8081/display`
+
+### Keeping `~/.pythia.env` up to date
+
+When a new variable is added to `.env.example`, you need to add it to `~/.pythia.env` on the Jetson before the next deploy. The CI will now catch missing keys early:
+
+```bash
+# Run this on the Jetson to check your env file against the current .env.example
+bash scripts/check-env.sh ~/.pythia.env
+```
+
+Add any reported missing keys to `~/.pythia.env`, then re-trigger the deploy.
 
 ---
 
