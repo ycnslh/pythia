@@ -69,13 +69,22 @@ jobs:
   deploy:
     name: Deploy
     runs-on: self-hosted
+    environment: production
     needs: [test-backend, test-frontend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Load .env
-        run: cp ~/.pythia.env .env
+      - name: Generate .env
+        run: |
+          echo "LLM_URL=${{ vars.LLM_URL }}" > .env
+          echo "LLM_MODEL=${{ vars.LLM_MODEL }}" >> .env
+          echo "LLM_API_KEY=${{ secrets.LLM_API_KEY }}" >> .env
+          echo "PYTHIA_LANGUAGE=${{ vars.PYTHIA_LANGUAGE }}" >> .env
+          echo "CRITICALITY_THRESHOLD=${{ vars.CRITICALITY_THRESHOLD }}" >> .env
+          echo "BACKEND_PORT=${{ vars.BACKEND_PORT }}" >> .env
+          echo "FRONTEND_PORT=${{ vars.FRONTEND_PORT }}" >> .env
+          echo "SOURCES_FILE=${{ vars.SOURCES_FILE }}" >> .env
 
       - name: Validate .env
         run: bash scripts/check-env.sh .env
