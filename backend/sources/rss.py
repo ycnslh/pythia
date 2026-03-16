@@ -82,7 +82,8 @@ class RSSSource(BaseSource):
             )
 
         # Trim _seen to avoid unbounded growth — remove oldest entries first
-        while len(self._seen) > SEEN_CAP:
-            self._seen.popitem(last=False)
+        if len(self._seen) > SEEN_CAP:
+            while len(self._seen) > SEEN_TRIM:
+                self._seen.popitem(last=False)
 
         return events
