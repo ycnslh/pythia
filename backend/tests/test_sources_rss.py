@@ -103,7 +103,8 @@ async def test_fetch_handles_network_error_gracefully(rss_source):
 async def test_fetch_trims_seen_set_when_over_cap(rss_source):
     """_seen should be trimmed when it exceeds SEEN_CAP to bound memory."""
     # Force _seen to be just above the cap
-    rss_source._seen = set(str(i) for i in range(SEEN_CAP + 1))
+    from collections import OrderedDict
+    rss_source._seen = OrderedDict((str(i), None) for i in range(SEEN_CAP + 1))
     assert len(rss_source._seen) > SEEN_CAP
 
     entries = [make_entry("New", link="https://example.com/new", uid="new-uid")]
