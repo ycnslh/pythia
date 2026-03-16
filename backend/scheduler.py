@@ -19,10 +19,13 @@ async def _poll_source(source: BaseSource) -> None:
     name = source.get_name()
     logger.info("Polling started for %s (interval: %ds)", name, interval)
 
+    error_count = 0
+
     while True:
         try:
             events = await source.fetch()
             source_health[name] = True
+            error_count = 0
             for raw_event in events:
                 evaluated = await evaluate(raw_event)
                 if evaluated is None:
@@ -48,7 +51,14 @@ async def _poll_source(source: BaseSource) -> None:
             return
         except Exception as e:
             source_health[name] = False
-            logger.error("Unhandled error polling %s: %s", name, e)
+            error_count += 1
+            backoff = min(interval * (2 ** error_count), 3600)
+            logger.error(
+                "Poll failed for %s (attempt %d) — retrying in %ds: %s",
+                name, error_count, backoff, e,
+            )
+            await asyncio.sleep(backoff)
+            continue
 
         await asyncio.sleep(interval)
 

@@ -32,9 +32,15 @@ class Settings(BaseSettings):
 
 def load_sources() -> list[dict[str, Any]]:
     path = os.environ.get("SOURCES_FILE", "sources.yaml")
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    return data.get("sources", [])
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
+        logging.getLogger(__name__).warning(
+            "sources.yaml not found at %s — starting with no sources", path
+        )
+        return []
+    return data.get("sources", []) if isinstance(data, dict) else []
 
 
 settings = Settings()

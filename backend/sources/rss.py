@@ -1,8 +1,9 @@
 import asyncio
 import hashlib
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
-from typing import List, Set
+from typing import List
 
 import feedparser
 
@@ -25,7 +26,7 @@ def _entry_published_at(entry) -> str | None:
 
 # Maximum entries processed per poll to avoid bursts
 MAX_ENTRIES = 5
-# Cap on _seen set size to bound memory usage
+# Cap on _seen OrderedDict size to bound memory usage (evicts oldest entries first)
 SEEN_CAP = 2000
 SEEN_TRIM = 1000
 
@@ -33,7 +34,7 @@ SEEN_TRIM = 1000
 class RSSSource(BaseSource):
     def __init__(self, config: dict) -> None:
         super().__init__(config)
-        self._seen: Set[str] = set()
+        self._seen: OrderedDict[str, None] = OrderedDict()
 
     def get_type(self) -> str:
         return "rss"
@@ -63,7 +64,7 @@ class RSSSource(BaseSource):
 
             if uid in self._seen:
                 continue
-            self._seen.add(uid)
+            self._seen[uid] = None
             new_entries += 1
 
             events.append(
@@ -80,8 +81,8 @@ class RSSSource(BaseSource):
                 )
             )
 
-        # Trim _seen to avoid unbounded growth
-        if len(self._seen) > SEEN_CAP:
-            self._seen = set(list(self._seen)[-SEEN_TRIM:])
+        # Trim _seen to avoid unbounded growth — remove oldest entries first
+        while len(self._seen) > SEEN_CAP:
+            self._seen.popitem(last=False)
 
         return events

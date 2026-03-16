@@ -7,7 +7,8 @@ import styles from "src/views/Display.module.css";
 // Display duration: linear scale — 8s base + 3s per criticality point
 // crit 1 → 8s, crit 5 → 20s, crit 10 → 35s
 function displayDuration(criticality) {
-  return (8 + (criticality - 1) * 3) * 1_000;
+  const crit = Math.max(1, Math.min(10, criticality));
+  return (8 + (crit - 1) * 3) * 1_000;
 }
 
 const GAP_MS = 2_000;

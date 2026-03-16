@@ -26,8 +26,8 @@ export default function Feed({ t }) {
         {eventHistory.length === 0 && (
           <p className={styles.empty}>{t.noEvents}</p>
         )}
-        {eventHistory.map((event, i) => (
-          <EventCard key={`${event.timestamp}-${i}`} event={event} t={t} />
+        {eventHistory.map((event) => (
+          <EventCard key={`${event.timestamp}-${event.title.slice(0, 20)}`} event={event} t={t} />
         ))}
       </div>
     </div>

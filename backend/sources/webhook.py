@@ -58,10 +58,11 @@ def build_webhook_router(configs: list, evaluate_fn, publish_fn) -> APIRouter:
             )
 
             evaluated = await _evaluate(raw)
-            if evaluated:
-                await _publish(evaluated)
+            if evaluated is None:
+                raise HTTPException(status_code=422, detail="Event evaluation failed")
+            await _publish(evaluated)
 
-            return {"status": "received"}
+            return {"status": "received", "criticality": evaluated.criticality}
 
         router.add_api_route(
             path,

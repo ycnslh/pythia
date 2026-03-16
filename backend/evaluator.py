@@ -117,6 +117,25 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
             data = _extract_json(raw)
 
             criticality = float(data["criticality"])
+            if not (1.0 <= criticality <= 10.0):
+                raise ValueError(f"criticality {criticality} out of range [1–10]")
+
+            _VALID_RANGES = {
+                "NOMINAL": (1, 3),
+                "ELEVATED SCRUTINY": (4, 5),
+                "DIVERGENCE": (6, 7),
+                "INTERVENTION IN PROGRESS": (8, 9),
+                "CRITICAL DIVERGENCE": (10, 10),
+            }
+            category = data["category"]
+            if category not in _VALID_RANGES:
+                raise ValueError(f"Unknown category: {category!r}")
+            lo, hi = _VALID_RANGES[category]
+            if not (lo <= criticality <= hi):
+                raise ValueError(
+                    f"Category {category!r} requires criticality {lo}–{hi}, got {criticality}"
+                )
+
             return EvaluatedEvent(
                 criticality=criticality,
                 category=data["category"],
