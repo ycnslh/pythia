@@ -37,7 +37,7 @@ services:
     memswap_limit: 64m
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pythia.rule=Host(`pythia.h.example.internal`)"
+      - "traefik.http.routers.pythia.rule=Host(`pythia.example.internal`)"
       - "traefik.http.routers.pythia.entrypoints=websecure"
       - "traefik.http.routers.pythia.tls.certresolver=letsencrypt"
       - "traefik.http.services.pythia.loadbalancer.server.port=80"
