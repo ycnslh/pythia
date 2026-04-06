@@ -10,6 +10,16 @@ sources:
     url: https://feeds.reuters.com/reuters/worldNews
     interval: 300
 
+  - type: rss
+    name: Hacker News
+    url: https://news.ycombinator.com/rss
+    interval: 300
+
+  - type: rss
+    name: The Hacker News
+    url: https://feeds.feedburner.com/TheHackersNews
+    interval: 300
+
   # ── Uptime Kuma ────────────────────────────────────────────────────────────
   # Uncomment and configure if you have an Uptime Kuma instance
   # - type: uptime_kuma
