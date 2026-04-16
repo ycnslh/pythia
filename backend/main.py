@@ -64,7 +64,7 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "connections": len(queue._connections)}
+    return {"status": "ok", "connections": queue.connection_count}
 
 
 @app.get("/api/events")

@@ -136,5 +136,5 @@ def _collect_metrics() -> dict:
 
 async def get_metrics() -> dict:
     """Return hardware metrics dict. Blocking reads run in the default executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _collect_metrics)

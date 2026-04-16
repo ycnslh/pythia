@@ -50,5 +50,9 @@ class EventQueue:
     def history(self) -> list[dict]:
         return list(self._history)
 
+    @property
+    def connection_count(self) -> int:
+        return len(self._connections)
+
 
 queue = EventQueue()

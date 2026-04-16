@@ -9,38 +9,53 @@ import styles from "src/components/SystemPanel.module.css";
  * Props:
  *   t — i18n dictionary (needs t.locale, t.cpu, t.ram, t.sources)
  */
-export default function SystemPanel({ t }) {
-  const [now, setNow] = useState(new Date());
-  const [sys, setSys] = useState(null);
 
-  // Live clock — update every second
+// Split out so the 1 s tick does not re-render the metric bars / source list.
+function Clock({ locale }) {
+  const [now, setNow] = useState(new Date());
+
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // System stats — poll every 5 seconds
-  useEffect(() => {
-    const fetchSys = () =>
-      fetch("/api/system")
-        .then((r) => r.json())
-        .then(setSys)
-        .catch(() => {});
-    fetchSys();
-    const id = setInterval(fetchSys, 5000);
-    return () => clearInterval(id);
-  }, []);
-
   const dateStr = now
-    .toLocaleDateString(t.locale, { day: "2-digit", month: "short", year: "numeric" })
+    .toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" })
     .toUpperCase();
 
-  const timeStr = now.toLocaleTimeString(t.locale, {
+  const timeStr = now.toLocaleTimeString(locale, {
     hour12: false,
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
+
+  return (
+    <div className={styles.clock}>
+      <span className={styles.date}>{dateStr}</span>
+      <span className={styles.time}>{timeStr}</span>
+    </div>
+  );
+}
+
+export default function SystemPanel({ t }) {
+  const [sys, setSys] = useState(null);
+
+  // System stats — poll every 5 seconds
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchSys = () =>
+      fetch("/api/system", { signal: controller.signal })
+        .then((r) => r.json())
+        .then(setSys)
+        .catch(() => {});
+    fetchSys();
+    const id = setInterval(fetchSys, 5000);
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
+  }, []);
 
   const ramDetail =
     sys &&
@@ -50,10 +65,7 @@ export default function SystemPanel({ t }) {
 
   return (
     <div className={styles.panel}>
-      <div className={styles.clock}>
-        <span className={styles.date}>{dateStr}</span>
-        <span className={styles.time}>{timeStr}</span>
-      </div>
+      <Clock locale={t.locale} />
 
       {sys && (
         <>

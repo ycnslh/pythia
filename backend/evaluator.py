@@ -67,6 +67,15 @@ Classe l'événement d'actualité avec ce schéma exact :
 }
 
 
+_CATEGORY_RANGES = {
+    "NOMINAL": (1, 3),
+    "ELEVATED SCRUTINY": (4, 5),
+    "DIVERGENCE": (6, 7),
+    "INTERVENTION IN PROGRESS": (8, 9),
+    "CRITICAL DIVERGENCE": (10, 10),
+}
+
+
 def _strip_thinking(text: str) -> str:
     """Remove <think>...</think> blocks emitted by reasoning models (e.g. Qwen3)."""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -120,17 +129,11 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
             if not (1.0 <= criticality <= 10.0):
                 raise ValueError(f"criticality {criticality} out of range [1–10]")
 
-            _VALID_RANGES = {
-                "NOMINAL": (1, 3),
-                "ELEVATED SCRUTINY": (4, 5),
-                "DIVERGENCE": (6, 7),
-                "INTERVENTION IN PROGRESS": (8, 9),
-                "CRITICAL DIVERGENCE": (10, 10),
-            }
             category = data["category"]
-            if category not in _VALID_RANGES:
+            range_ = _CATEGORY_RANGES.get(category)
+            if range_ is None:
                 raise ValueError(f"Unknown category: {category!r}")
-            lo, hi = _VALID_RANGES[category]
+            lo, hi = range_
             if not (lo <= criticality <= hi):
                 raise ValueError(
                     f"Category {category!r} requires criticality {lo}–{hi}, got {criticality}"

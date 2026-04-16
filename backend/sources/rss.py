@@ -41,7 +41,7 @@ class RSSSource(BaseSource):
 
     async def fetch(self) -> List[RawEvent]:
         url = self.config["url"]
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         try:
             feed = await loop.run_in_executor(None, feedparser.parse, url)

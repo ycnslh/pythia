@@ -1,9 +1,11 @@
 import logging
+import os
+from functools import lru_cache
+from typing import Any
+
+import yaml
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
-from typing import Any
-import yaml
-import os
 
 
 class Settings(BaseSettings):
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
         return self
 
 
+@lru_cache(maxsize=1)
 def load_sources() -> list[dict[str, Any]]:
     path = os.environ.get("SOURCES_FILE", "sources.yaml")
     try:
