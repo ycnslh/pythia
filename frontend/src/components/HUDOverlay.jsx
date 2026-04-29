@@ -28,6 +28,15 @@ const BLOCK_H = 100;
 // Gap between circle surface and text block attachment point (px).
 const PAD = 54;
 
+function hexPoints(cx, cy, r) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+    pts.push(`${(cx + Math.cos(a) * r).toFixed(2)},${(cy + Math.sin(a) * r).toFixed(2)}`);
+  }
+  return pts.join(" ");
+}
+
 export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle = null }) {
   // Keep the last non-null event for rendering during fade-out.
   // When event becomes null (gap state), we still render the old data
@@ -152,27 +161,23 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
             </div>
           </div>
 
-          {/* SVG leader line — fades with the data block */}
+          {/* SVG leader line — fades with the data block.
+              Hexagonal marker on the ring + thin line to the data block,
+              matching the Rehoboam-style HUD aesthetic. */}
           <svg
             className={styles.leaderSvg}
             style={{ opacity: dataOpacity }}
             xmlns="http://www.w3.org/2000/svg"
           >
-            <circle
-              cx={anchorX} cy={anchorY} r={3}
-              fill="none" stroke="rgba(15,15,15,0.4)" strokeWidth={0.7}
-            />
-            <line
-              x1={anchorX - 7} y1={anchorY} x2={anchorX + 7} y2={anchorY}
-              stroke="rgba(15,15,15,0.3)" strokeWidth={0.6}
-            />
-            <line
-              x1={anchorX} y1={anchorY - 7} x2={anchorX} y2={anchorY + 7}
-              stroke="rgba(15,15,15,0.3)" strokeWidth={0.6}
+            <polygon
+              points={hexPoints(anchorX, anchorY, 4)}
+              fill="none"
+              stroke="rgba(255,255,255,0.7)"
+              strokeWidth={0.8}
             />
             <line
               x1={anchorX} y1={anchorY} x2={lineEndX} y2={lineEndY}
-              stroke="rgba(15,15,15,0.2)" strokeWidth={0.5}
+              stroke="rgba(255,255,255,0.45)" strokeWidth={0.6}
             />
           </svg>
         </>

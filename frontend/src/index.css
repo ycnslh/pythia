@@ -7,18 +7,21 @@
 }
 
 :root {
-  --color-bg: #ebebeb;
-  --color-primary: #1a1a1a;
-  --color-dim: rgba(20, 20, 20, 0.4);
-  --color-faint: rgba(20, 20, 20, 0.15);
-  --color-border: rgba(20, 20, 20, 0.12);
+  --color-bg: #000000;
+  --color-primary: #ffffff;
+  --color-dim: rgba(255, 255, 255, 0.55);
+  --color-faint: rgba(255, 255, 255, 0.18);
+  --color-border: rgba(255, 255, 255, 0.12);
 
-  /* Criticality color bands — monochrome to deep red */
-  --color-nominal: rgba(20, 20, 20, 0.4);
-  --color-scrutiny: rgba(20, 20, 20, 0.65);
-  --color-divergence: #1a1a1a;
-  --color-intervention: #7a2800;
-  --color-critical: #5c0000;
+  /* Criticality bands — pure monochrome, opacity-only differentiation */
+  --color-nominal: rgba(255, 255, 255, 0.35);
+  --color-scrutiny: rgba(255, 255, 255, 0.55);
+  --color-divergence: rgba(255, 255, 255, 0.80);
+  --color-intervention: rgba(255, 255, 255, 0.95);
+  --color-critical: #ffffff;
+
+  /* Foreground RGB triplet — used by canvas for stroke/fill alpha math */
+  --fg-rgb: 255, 255, 255;
 
   --font-mono: "Courier New", Courier, monospace;
   --font-size-xs: 0.65rem;
@@ -47,5 +50,5 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(20, 20, 20, 0.18);
+  background: rgba(255, 255, 255, 0.18);
 }

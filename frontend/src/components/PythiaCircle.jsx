@@ -2,35 +2,34 @@ import { useRef, useEffect } from "react";
 import styles from "src/components/PythiaCircle.module.css";
 
 /**
- * Canvas-based stipple ring with local particle emission.
+ * Canvas stipple ring with localized wave deformation.
  *
- * The ring itself stays circular at all times.
- * Alerts trigger particles that escape outward from a specific arc of the ring,
- * forming ripple-like puffs at the emission site.
+ * The ring is a circle of stipple dots. Events deform the radius along a
+ * narrow arc, producing outward "spike" formations rather than emitting
+ * particles — Rehoboam-inspired monochrome silhouette on a black background.
  *
  * Props:
- *   state          — "idle" | "analyzing" | "divergence" | "returning"
- *   criticality    — number 1–10
- *   queueSize      — pending events (adds secondary emission arcs)
- *   onReturnComplete — called when the "returning" animation finishes
+ *   state            — "idle" | "analyzing" | "divergence" | "returning"
+ *   criticality      — 1–10, drives wave amplitude
+ *   queueSize        — adds a softer counter-arc on the opposite side
+ *   emissionAngle    — radians, center of the deformed arc
+ *   onReturnComplete — fired once the "returning" animation finishes
  */
 
-const N_RING = 480;
-const MAX_PARTICLES = 600;
-const RETURN_DUR = 2.5; // seconds
+const N_RING = 720;
+const RETURN_DUR = 2.5;
 
-// 80% tight ring + 20% halo — natural ring thickness without deformation
 function initRing() {
   const dots = [];
   for (let i = 0; i < N_RING; i++) {
-    const halo = Math.random() > 0.8;
+    const halo = Math.random() > 0.78;
     dots.push({
-      baseAngle: (i / N_RING) * Math.PI * 2 + (Math.random() - 0.5) * 0.008,
+      baseAngle: (i / N_RING) * Math.PI * 2 + (Math.random() - 0.5) * 0.006,
       jitter: halo
-        ? (Math.random() - 0.5) * 8   // ±4px outer halo
-        : (Math.random() - 0.5) * 3,  // ±1.5px tight ring
+        ? (Math.random() - 0.5) * 7
+        : (Math.random() - 0.5) * 2.2,
       phase: Math.random() * Math.PI * 2,
-      size: Math.random() * 0.65 + 0.48,
+      size: Math.random() * 0.7 + 0.45,
       baseOpacity: Math.random() * 0.18 + 0.72,
     });
   }
@@ -40,53 +39,90 @@ function initRing() {
 function makeEmission(criticality, angle = null) {
   return {
     angle: angle ?? Math.random() * Math.PI * 2,
-    halfWidth: (0.35 + (criticality / 10) * 0.85) / 2,
-    strength: 0.35 + (criticality / 10) * 0.75,
+    halfWidth: 0.30 + (criticality / 10) * 0.45,
+    strength: 0.45 + (criticality / 10) * 0.65,
   };
 }
 
-export default function PythiaCircle({ state, criticality = 0, queueSize = 0, emissionAngle = null, onReturnComplete }) {
-  const canvasRef   = useRef(null);
-  // performance.now() timestamps — consistent with rAF timestamps
-  const mountRef    = useRef(performance.now());
-  const startRef    = useRef(performance.now()); // resets on state change
-  const stateRef    = useRef(state);
-  const critRef     = useRef(criticality);
-  const queueRef    = useRef(queueSize);
-  const frameRef    = useRef(null);
-  const ringRef     = useRef(null);
-  const particlesRef = useRef([]);
-  const emissionRef  = useRef(null);
+// Radial displacement at `angle`, in pixels.
+// Localized by a Gaussian envelope around em.angle; combined harmonics
+// give the silhouette its finger-like outward spikes.
+function waveAt(angle, t, em, baseR, amp) {
+  if (!em || amp <= 0) return 0;
+
+  let da = angle - em.angle;
+  while (da > Math.PI) da -= Math.PI * 2;
+  while (da < -Math.PI) da += Math.PI * 2;
+
+  const sigma = em.halfWidth;
+  const env = Math.exp(-(da * da) / (2 * sigma * sigma));
+  if (env < 0.015) return 0;
+
+  const slow = Math.sin(angle * 6 + t * 0.55);
+  const fast = Math.sin(angle * 19 + t * 1.6 + slow);
+  const finger = Math.sin(angle * 35 + t * 2.2) * 0.4;
+  const composite = slow * 0.55 + fast * 0.55 + finger;
+
+  // Strong outward bias — small inward tail keeps the ring from feeling rigid
+  const shaped = composite > 0 ? Math.pow(composite, 1.2) : composite * 0.18;
+
+  const maxAmp = baseR * 0.45;
+  return env * shaped * amp * em.strength * maxAmp;
+}
+
+export default function PythiaCircle({
+  state,
+  criticality = 0,
+  queueSize = 0,
+  emissionAngle = null,
+  onReturnComplete,
+}) {
+  const canvasRef = useRef(null);
+  const mountRef = useRef(performance.now());
+  const startRef = useRef(performance.now());
+  const stateRef = useRef(state);
+  const critRef = useRef(criticality);
+  const queueRef = useRef(queueSize);
+  const frameRef = useRef(null);
+  const ringRef = useRef(null);
+  const emissionRef = useRef(null);
+  const counterRef = useRef(null);
   const returnNotifiedRef = useRef(false);
 
-  // Sync props to refs during render — same frame as the prop change, no async delay.
   stateRef.current = state;
   critRef.current = criticality;
   queueRef.current = queueSize;
 
-  // Reset phase timer and setup emission arc on state change
   useEffect(() => {
-    startRef.current = performance.now(); // use same clock as rAF
+    startRef.current = performance.now();
     returnNotifiedRef.current = false;
 
     if (state === "analyzing") {
       emissionRef.current = makeEmission(criticality, emissionAngle);
+      counterRef.current = {
+        angle: emissionRef.current.angle + Math.PI,
+        halfWidth: 0.7,
+        strength: 0.35,
+      };
     } else if (state === "divergence") {
       if (!emissionRef.current) emissionRef.current = makeEmission(criticality, emissionAngle);
+      counterRef.current = {
+        angle: emissionRef.current.angle + Math.PI,
+        halfWidth: 0.7,
+        strength: 0.35,
+      };
     } else if (state === "idle") {
       emissionRef.current = null;
+      counterRef.current = null;
     }
   }, [state, criticality, emissionAngle]);
 
-  // Animation loop — single instance for component lifetime.
-  // onReturnComplete is wrapped in useCallback by the parent to keep this stable.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     if (!ringRef.current) ringRef.current = initRing();
 
-    // Cache the 2D context — same object reference, safe to reuse after resize
     const ctx = canvas.getContext("2d");
 
     const handleResize = () => {
@@ -97,13 +133,9 @@ export default function PythiaCircle({ state, criticality = 0, queueSize = 0, em
     handleResize();
     window.addEventListener("resize", handleResize);
 
-    // rAF loop — timestamp is performance.now(), same origin as mountRef / startRef
     const loop = (timestamp) => {
-      const totalT = (timestamp - mountRef.current) / 1000; // never resets
-      const stateT = (timestamp - startRef.current) / 1000; // resets per state
-      // Real dt from actual frame delta, capped to avoid physics explosion after tab switch
-      const dt = Math.min((timestamp - (loop._last ?? timestamp)) / 1000, 0.05);
-      loop._last = timestamp;
+      const totalT = (timestamp - mountRef.current) / 1000;
+      const stateT = (timestamp - startRef.current) / 1000;
 
       const W = canvas.width;
       const H = canvas.height;
@@ -111,122 +143,50 @@ export default function PythiaCircle({ state, criticality = 0, queueSize = 0, em
       const cy = H / 2;
       const baseR = W * 0.38;
 
-      const s     = stateRef.current;
-      const crit  = critRef.current;
+      const s = stateRef.current;
       const queue = queueRef.current;
 
       ctx.clearRect(0, 0, W, H);
 
-      // ── Emission params ────────────────────────────────────────────────────
-      const em = emissionRef.current;
-      let emitRate = 0;
-      let emitStrength = 0;
-
-      if (s === "idle") {
-        emitRate = 1.5;
-        emitStrength = 0.1;
-      } else if (s === "analyzing" && em) {
-        const prog = Math.min(stateT / 3, 1);
-        emitRate = prog * (10 + crit * 3);
-        emitStrength = em.strength * (0.25 + prog * 0.75);
-      } else if (s === "divergence" && em) {
-        emitRate = 16 + crit * 5;
-        emitStrength = em.strength;
-      } else if (s === "returning" && em) {
+      let waveAmp = 0;
+      if (s === "analyzing") {
+        waveAmp = Math.min(stateT / 2.5, 1) * 0.35;
+      } else if (s === "divergence") {
+        waveAmp = 1.0;
+      } else if (s === "returning") {
         const prog = Math.min(stateT / RETURN_DUR, 1);
-        emitRate = (16 + crit * 5) * Math.pow(1 - prog, 2);
-        emitStrength = em.strength * (1 - prog);
+        waveAmp = Math.pow(1 - prog, 1.6);
       }
 
-      // ── Spawn primary particles ────────────────────────────────────────────
-      const toSpawn = emitRate > 0 ? Math.floor(emitRate * dt + Math.random()) : 0;
-      for (let i = 0; i < toSpawn && particlesRef.current.length < MAX_PARTICLES; i++) {
-        let spawnAngle;
-        if (em) {
-          const u = Math.random() - Math.random(); // triangular distribution
-          spawnAngle = em.angle + u * em.halfWidth;
-        } else {
-          spawnAngle = Math.random() * Math.PI * 2;
-        }
-        const speed = emitStrength * (0.3 + Math.random() * 0.7) * baseR * 0.04;
-        particlesRef.current.push({
-          angle: spawnAngle,
-          radialOffset: (Math.random() - 0.5) * 3,
-          tangentialDrift: 0,
-          vr: speed,
-          vt: (Math.random() - 0.5) * 0.005,
-          life: 1.0,
-          decay: 0.38 + Math.random() * 0.38,
-          size: Math.random() * 0.85 + 0.3,
-        });
-      }
+      const counterAmp = queue > 0 ? Math.min(queue / 3, 1) * 0.55 * waveAmp : 0;
 
-      // ── Spawn secondary particles (queue backpressure) ─────────────────────
-      if (queue > 0 && em && s !== "idle") {
-        const secRate = Math.min(queue * 4, 28);
-        const toSpawnSec = Math.floor(secRate * dt + Math.random() * 0.5);
-        const secBase = em.angle + Math.PI;
-        for (let i = 0; i < toSpawnSec && particlesRef.current.length < MAX_PARTICLES; i++) {
-          const secAngle = secBase + (Math.random() - 0.5) * Math.PI;
-          const speed = 0.2 * (0.4 + Math.random() * 0.6) * baseR * 0.04;
-          particlesRef.current.push({
-            angle: secAngle,
-            radialOffset: (Math.random() - 0.5) * 2,
-            tangentialDrift: 0,
-            vr: speed,
-            vt: (Math.random() - 0.5) * 0.003,
-            life: 1.0,
-            decay: 0.45 + Math.random() * 0.45,
-            size: Math.random() * 0.55 + 0.25,
-          });
-        }
-      }
+      // Additive blending — overlapping dots brighten the spike tips
+      ctx.globalCompositeOperation = "lighter";
 
-      // ── Update & draw particles ────────────────────────────────────────────
-      const alive = [];
-      for (const p of particlesRef.current) {
-        p.radialOffset    += p.vr * dt;
-        p.tangentialDrift += p.vt;
-        p.life -= p.decay * dt;
-        if (p.life <= 0) continue;
-        alive.push(p);
-
-        const r = baseR + p.radialOffset;
-        if (r < 4) continue;
-
-        const x = cx + Math.cos(p.angle + p.tangentialDrift) * r;
-        const y = cy + Math.sin(p.angle + p.tangentialDrift) * r;
-
-        let colR = 15, colG = 15, colB = 15;
-        if (s !== "idle") {
-          if (crit >= 8) { colR = 62; colG = 8;  colB = 8; }
-          else if (crit >= 6) { colR = 38; colG = 14; colB = 6; }
-        }
-
-        ctx.beginPath();
-        ctx.arc(x, y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${colR},${colG},${colB},${p.life * 0.75})`;
-        ctx.fill();
-      }
-      particlesRef.current = alive;
-
-      // ── Draw ring — always on top of particles ─────────────────────────────
       const breatheAmp = s === "idle" ? 1.3 : 0.65;
-      const ringAlpha  = s === "idle" ? 0.64 : 0.9;
+      const ringAlpha = s === "idle" ? 0.55 : 0.85;
 
       for (const dot of ringRef.current) {
         const breathe = Math.sin(totalT * 0.45 + dot.phase) * breatheAmp;
-        const r = baseR + dot.jitter + breathe;
+        const wave =
+          waveAt(dot.baseAngle, totalT, emissionRef.current, baseR, waveAmp) +
+          waveAt(dot.baseAngle, totalT, counterRef.current, baseR, counterAmp);
+
+        const r = baseR + dot.jitter + breathe + wave;
         const x = cx + Math.cos(dot.baseAngle) * r;
         const y = cy + Math.sin(dot.baseAngle) * r;
 
+        const tipBoost = wave > 0 ? Math.min(wave / (baseR * 0.25), 1) * 0.3 : 0;
+        const a = Math.min(dot.baseOpacity * ringAlpha + tipBoost, 1);
+
         ctx.beginPath();
         ctx.arc(x, y, dot.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(15,15,15,${dot.baseOpacity * ringAlpha})`;
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
         ctx.fill();
       }
 
-      // ── Notify return complete ─────────────────────────────────────────────
+      ctx.globalCompositeOperation = "source-over";
+
       if (s === "returning" && stateT >= RETURN_DUR && !returnNotifiedRef.current) {
         returnNotifiedRef.current = true;
         onReturnComplete?.();
@@ -240,7 +200,7 @@ export default function PythiaCircle({ state, criticality = 0, queueSize = 0, em
       cancelAnimationFrame(frameRef.current);
       window.removeEventListener("resize", handleResize);
     };
-  }, [onReturnComplete]); // stable only if parent wraps handler in useCallback
+  }, [onReturnComplete]);
 
   return <canvas ref={canvasRef} className={styles.canvas} />;
 }

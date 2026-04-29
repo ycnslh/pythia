@@ -135,8 +135,8 @@ export default function SystemPanel({ t }) {
                     className={styles.dot}
                     style={{
                       color: s.healthy
-                        ? "rgba(30,100,30,0.85)"
-                        : "rgba(140,30,30,0.85)",
+                        ? "rgba(255,255,255,0.85)"
+                        : "rgba(255,255,255,0.25)",
                     }}
                   >
                     ●
