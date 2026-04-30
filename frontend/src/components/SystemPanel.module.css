@@ -1,14 +1,44 @@
 .panel {
   position: absolute;
-  top: 4.5rem;
+  top: 5.5rem;
   right: 2rem;
   text-align: right;
   display: flex;
   flex-direction: column;
   gap: 0.22rem;
-  width: 200px;
+  width: 240px;
   pointer-events: none;
   user-select: none;
+}
+
+/* ── LLM block ──────────────────────────────────────────────────────────── */
+.llmBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+}
+
+.llmLabel {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.2em;
+  opacity: 0.45;
+}
+
+.llmProvider {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.18em;
+  opacity: 0.85;
+  text-transform: uppercase;
+}
+
+.llmModel {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  word-break: break-all;
+  text-align: right;
+  line-height: 1.3;
 }
 
 /* ── Clock ──────────────────────────────────────────────────────────────────── */

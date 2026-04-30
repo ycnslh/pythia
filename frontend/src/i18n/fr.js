@@ -15,6 +15,7 @@ export default {
   disk: "DSK",
   temp: "TEMP",
   sources: "SOURCES",
+  llm: "LLM",
   // Feed
   feedTitle: "JOURNAL D'ÉVÉNEMENTS",
   noEvents: "AUCUN ÉVÉNEMENT ENREGISTRÉ",

@@ -69,6 +69,17 @@ export default function SystemPanel({ t }) {
 
       {sys && (
         <>
+          {sys.llm && (
+            <>
+              <div className={styles.divider} />
+              <div className={styles.llmBlock}>
+                <span className={styles.llmLabel}>{t.llm}</span>
+                <span className={styles.llmProvider}>{sys.llm.provider}</span>
+                <span className={styles.llmModel}>{sys.llm.model}</span>
+              </div>
+            </>
+          )}
+
           <div className={styles.divider} />
 
           <div className={styles.metric}>

@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +74,23 @@ async def get_events():
     return {"events": queue.history}
 
 
+def _llm_provider(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if "openrouter" in host:
+        return "OpenRouter"
+    if "openai.com" in host:
+        return "OpenAI"
+    if "anthropic" in host:
+        return "Anthropic"
+    if "googleapis" in host or host.endswith("google.com"):
+        return "Google"
+    if "ollama" in host:
+        return "Ollama"
+    if host in ("localhost", "127.0.0.1", "0.0.0.0", ""):
+        return "Local"
+    return host
+
+
 @app.get("/api/system")
 async def system_status():
     """Return machine resource usage and source health status."""
@@ -87,6 +105,10 @@ async def system_status():
         for s in source_configs
         if s.get("type") != "webhook"
     ]
+    metrics["llm"] = {
+        "provider": _llm_provider(settings.llm_url),
+        "model": settings.llm_model,
+    }
     return metrics
 
 

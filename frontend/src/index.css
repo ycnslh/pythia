@@ -24,11 +24,11 @@
   --fg-rgb: 255, 255, 255;
 
   --font-mono: "Courier New", Courier, monospace;
-  --font-size-xs: 0.65rem;
-  --font-size-sm: 0.75rem;
-  --font-size-base: 0.875rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.5rem;
+  --font-size-xs: 0.85rem;
+  --font-size-sm: 1rem;
+  --font-size-base: 1.15rem;
+  --font-size-lg: 1.5rem;
+  --font-size-xl: 2rem;
 }
 
 html,

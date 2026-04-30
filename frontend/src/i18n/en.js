@@ -15,6 +15,7 @@ export default {
   disk: "DSK",
   temp: "TEMP",
   sources: "SOURCES",
+  llm: "LLM",
   // Feed
   feedTitle: "EVENT LOG",
   noEvents: "NO EVENTS RECORDED",

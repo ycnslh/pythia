@@ -23,10 +23,10 @@ import SystemPanel from "src/components/SystemPanel";
 
 // Estimated text block dimensions for placement math.
 // Vertical is approximate — clamping handles the rest.
-const BLOCK_W = 260;
-const BLOCK_H = 100;
+const BLOCK_W = 340;
+const BLOCK_H = 130;
 // Gap between circle surface and text block attachment point (px).
-const PAD = 54;
+const PAD = 64;
 
 function hexPoints(cx, cy, r) {
   const pts = [];
