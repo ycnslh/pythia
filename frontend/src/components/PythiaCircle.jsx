@@ -8,14 +8,18 @@ import styles from "src/components/PythiaCircle.module.css";
  * the rim become visible — broad fluffy bases and 1–3 sharp daggers per
  * divergence.
  *
+ * All stochastic clouds are persistent (generated once, reused every frame)
+ * so the silhouette breathes slowly instead of boiling. Per-frame stochastic
+ * resampling produced a flicker that read as "too fast" even when the wave
+ * function itself was slow.
+ *
  * Layer order (back → front):
- *   1. Frost halo     — always-on per-frame cloud hugging the rim. Suggests
- *                       the back of the crater leaking around the disk.
- *   2. Spike cloud    — wave-driven bursts at the emission angle, plus
- *                       narrow "dagger" sub-emissions for dramatic outliers.
- *   3. Disk mask      — destination-out fill, erases the inner area.
- *   4. Rim            — stipple boundary on top of the disk, slightly
- *                       perturbed so the spike base feels anchored.
+ *   1. Frost halo  — persistent rim halo, gently pulsed.
+ *   2. Spike cloud — persistent dot field, regenerated only when an emission
+ *                    starts. Each dot's visibility is gated by the wave reach
+ *                    at its fixed angle, so the formation grows in place.
+ *   3. Disk mask   — destination-out fill, erases the inner area.
+ *   4. Rim         — stipple boundary on top of the disk.
  *
  * Props:
  *   state            — "idle" | "analyzing" | "divergence" | "returning"
@@ -26,9 +30,10 @@ import styles from "src/components/PythiaCircle.module.css";
  */
 
 const N_RING = 600;
-const N_FROST = 220; // ambient rim halo, every frame
-const N_SPIKE = 700; // spike cloud, every frame when active
-const RETURN_DUR = 2.5;
+const N_FROST = 260;
+const N_SPIKE = 900;
+const N_COUNTER = 320;
+const RETURN_DUR = 3.5;
 
 function initRing() {
   const dots = [];
@@ -44,18 +49,50 @@ function initRing() {
   return dots;
 }
 
+function initFrost() {
+  const dots = [];
+  for (let i = 0; i < N_FROST; i++) {
+    const u = Math.pow(Math.random(), 1.7);
+    dots.push({
+      angle: Math.random() * Math.PI * 2,
+      radialOffset: -2 + 9 * u,
+      size: 0.25 + Math.random() * 0.35,
+      baseAlpha: (1 - u) * 0.18,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+  return dots;
+}
+
+// Spike cloud — generated when an emission starts. Each dot stores a fixed
+// position relative to the emission center; the wave reach at that angle
+// gates visibility per frame.
+function initSpikeCloud(n) {
+  const dots = [];
+  for (let i = 0; i < n; i++) {
+    dots.push({
+      angleU: Math.random() + Math.random() - 1, // triangular ~ Gaussian, -1..1
+      radialU: Math.pow(Math.random(), 1.5),
+      angleJitter: (Math.random() - 0.5) * 0.045,
+      inset: Math.random() * 8,
+      size: 0.18 + Math.random() * 0.5,
+      alpha: 0.35 + Math.random() * 0.25,
+    });
+  }
+  return dots;
+}
+
 function makeEmission(criticality, angle = null) {
   const baseAngle = angle ?? Math.random() * Math.PI * 2;
   const halfWidth = 0.34 + (criticality / 10) * 0.36;
 
-  // 1-3 daggers — narrow, sharp sub-emissions inside the main envelope
   const nDaggers = 1 + Math.floor(Math.random() * 3);
   const daggers = [];
   for (let i = 0; i < nDaggers; i++) {
     daggers.push({
       angle: baseAngle + (Math.random() - 0.5) * halfWidth * 1.3,
       halfWidth: 0.025 + Math.random() * 0.04,
-      reachMul: 1.4 + Math.random() * 1.1, // 1.4× to 2.5× of the broad reach
+      reachMul: 1.4 + Math.random() * 1.1,
       seed: Math.random() * 10,
     });
   }
@@ -66,6 +103,16 @@ function makeEmission(criticality, angle = null) {
     strength: 0.55 + (criticality / 10) * 0.55,
     seed: Math.random() * 10,
     daggers,
+  };
+}
+
+function makeCounter(mainAngle) {
+  return {
+    angle: mainAngle + Math.PI,
+    halfWidth: 0.55,
+    strength: 0.32,
+    seed: Math.random() * 10,
+    daggers: [],
   };
 }
 
@@ -82,7 +129,8 @@ function broadWaveAt(angle, t, em, baseR, amp) {
   const w1 = Math.sin(da * 11 + seed * 17);
   const w2 = Math.sin(da * 26 + seed * 31) * 0.6;
   const w3 = Math.sin(da * 49 + seed * 43) * 0.32;
-  const wobble = 0.85 + Math.sin(t * 0.45 + seed) * 0.15;
+  // Slow temporal wobble — was 0.45, now 0.18
+  const wobble = 0.85 + Math.sin(t * 0.18 + seed) * 0.15;
 
   const composite = (w1 * 0.7 + w2 + w3) * wobble;
   const shaped = composite > 0 ? Math.pow(composite, 1.25) : 0;
@@ -90,9 +138,8 @@ function broadWaveAt(angle, t, em, baseR, amp) {
   return env * shaped * amp * em.strength * baseR * 0.42;
 }
 
-// Dagger contribution — narrow, sharp, longer reach.
 function daggerWaveAt(angle, t, em, baseR, amp) {
-  if (!em.daggers) return 0;
+  if (!em.daggers || em.daggers.length === 0) return 0;
   let total = 0;
   for (const d of em.daggers) {
     let da = angle - d.angle;
@@ -102,7 +149,8 @@ function daggerWaveAt(angle, t, em, baseR, amp) {
     const env = Math.exp(-(da * da) / (2 * d.halfWidth * d.halfWidth));
     if (env < 0.02) continue;
 
-    const wobble = 0.88 + Math.sin(t * 0.7 + d.seed * 3) * 0.12;
+    // Was 0.7, now 0.25
+    const wobble = 0.88 + Math.sin(t * 0.25 + d.seed * 3) * 0.12;
     total += env * wobble * amp * em.strength * baseR * 0.32 * d.reachMul;
   }
   return total;
@@ -111,12 +159,6 @@ function daggerWaveAt(angle, t, em, baseR, amp) {
 function waveAt(angle, t, em, baseR, amp) {
   if (!em || amp <= 0) return 0;
   return broadWaveAt(angle, t, em, baseR, amp) + daggerWaveAt(angle, t, em, baseR, amp);
-}
-
-// Triangular sampling around em.angle — concentrates samples where the envelope matters
-function sampleEmissionAngle(em) {
-  const u = Math.random() + Math.random() - 1;
-  return em.angle + u * em.halfWidth * 1.7;
 }
 
 export default function PythiaCircle({
@@ -134,6 +176,9 @@ export default function PythiaCircle({
   const queueRef = useRef(queueSize);
   const frameRef = useRef(null);
   const ringRef = useRef(null);
+  const frostRef = useRef(null);
+  const spikeRef = useRef(null);
+  const counterCloudRef = useRef(null);
   const emissionRef = useRef(null);
   const counterRef = useRef(null);
   const returnNotifiedRef = useRef(false);
@@ -149,12 +194,20 @@ export default function PythiaCircle({
     if (state === "analyzing") {
       emissionRef.current = makeEmission(criticality, emissionAngle);
       counterRef.current = makeCounter(emissionRef.current.angle);
+      spikeRef.current = initSpikeCloud(N_SPIKE);
+      counterCloudRef.current = initSpikeCloud(N_COUNTER);
     } else if (state === "divergence") {
-      if (!emissionRef.current) emissionRef.current = makeEmission(criticality, emissionAngle);
-      counterRef.current = makeCounter(emissionRef.current.angle);
+      if (!emissionRef.current) {
+        emissionRef.current = makeEmission(criticality, emissionAngle);
+        counterRef.current = makeCounter(emissionRef.current.angle);
+        spikeRef.current = initSpikeCloud(N_SPIKE);
+        counterCloudRef.current = initSpikeCloud(N_COUNTER);
+      }
     } else if (state === "idle") {
       emissionRef.current = null;
       counterRef.current = null;
+      spikeRef.current = null;
+      counterCloudRef.current = null;
     }
   }, [state, criticality, emissionAngle]);
 
@@ -163,6 +216,7 @@ export default function PythiaCircle({
     if (!canvas) return;
 
     if (!ringRef.current) ringRef.current = initRing();
+    if (!frostRef.current) frostRef.current = initFrost();
 
     const ctx = canvas.getContext("2d");
 
@@ -189,15 +243,16 @@ export default function PythiaCircle({
 
       ctx.clearRect(0, 0, W, H);
 
-      // ── Wave amplitudes per state ─────────────────────────────────────────
+      // ── Wave amplitudes per state — slowed envelopes ─────────────────────
       let waveAmp = 0;
       if (s === "analyzing") {
-        waveAmp = Math.min(stateT / 2.3, 1) * 0.45;
+        // Was 2.3s, now 4s ramp
+        waveAmp = Math.min(stateT / 4.0, 1) * 0.45;
       } else if (s === "divergence") {
         waveAmp = 1.0;
       } else if (s === "returning") {
         const prog = Math.min(stateT / RETURN_DUR, 1);
-        waveAmp = Math.pow(1 - prog, 1.6);
+        waveAmp = Math.pow(1 - prog, 1.8);
       }
 
       const counterAmp =
@@ -205,57 +260,49 @@ export default function PythiaCircle({
 
       ctx.globalCompositeOperation = "lighter";
 
-      // ── Layer 1 — frost halo (always on) ──────────────────────────────────
-      // Suggests the back of the crater visible around the disk silhouette.
-      // Slightly modulated by the breathing phase and brightened during events.
-      const frostBoost = 1 + waveAmp * 0.4;
-      const frostAlpha = 0.16 * frostBoost;
-      for (let i = 0; i < N_FROST; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const u = Math.pow(Math.random(), 1.7);
-        const radialOffset = -2 + 9 * u;
-        const r = baseR + radialOffset;
-        const x = cx + Math.cos(a) * r;
-        const y = cy + Math.sin(a) * r;
-        const alpha = (1 - u) * frostAlpha;
-        const size = 0.25 + Math.random() * 0.35;
+      // ── Layer 1 — frost halo (persistent) ─────────────────────────────────
+      // Same dots every frame, gently pulsed by phase. Brightens during events.
+      const frostBoost = 1 + waveAmp * 0.45;
+      for (const dot of frostRef.current) {
+        const pulse = 0.85 + Math.sin(totalT * 0.22 + dot.phase) * 0.15;
+        const r = baseR + dot.radialOffset;
+        const x = cx + Math.cos(dot.angle) * r;
+        const y = cy + Math.sin(dot.angle) * r;
+        const alpha = dot.baseAlpha * pulse * frostBoost;
         ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.arc(x, y, dot.size, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(255,255,255,${alpha})`;
         ctx.fill();
       }
 
-      // ── Layer 2 — spike cloud + daggers ───────────────────────────────────
-      const drawSpikeSamples = (em, amp, n) => {
-        if (!em || amp <= 0) return;
-        for (let i = 0; i < n; i++) {
-          const angle = sampleEmissionAngle(em);
+      // ── Layer 2 — spike cloud (persistent, amplitude-gated) ───────────────
+      const drawSpikeCloud = (em, cloud, amp) => {
+        if (!em || !cloud || amp <= 0) return;
+        const angularSpan = em.halfWidth * 1.7;
+        for (const dot of cloud) {
+          const angle = em.angle + dot.angleU * angularSpan;
           const reach = waveAt(angle, totalT, em, baseR, amp);
           if (reach <= 0) continue;
 
-          const u = Math.pow(Math.random(), 1.5);
-          const inset = Math.random() * 8;
-          const radialOffset = -inset + (reach + inset) * u;
+          const radialOffset = -dot.inset + (reach + dot.inset) * dot.radialU;
           const r = baseR + radialOffset;
+          const x = cx + Math.cos(angle + dot.angleJitter) * r;
+          const y = cy + Math.sin(angle + dot.angleJitter) * r;
 
-          const aJitter = (Math.random() - 0.5) * 0.045;
-          const x = cx + Math.cos(angle + aJitter) * r;
-          const y = cy + Math.sin(angle + aJitter) * r;
-
-          // Bright base, faded tip — but not zero, so daggers stay legible
-          const tipFrac = u;
-          const alpha = (1 - tipFrac * 0.7) * 0.5;
-          const size = (1 - tipFrac * 0.55) * 0.5 + 0.18;
+          // Tip taper — fade and shrink toward the dot's radial fraction
+          const tipFrac = dot.radialU;
+          const a = dot.alpha * (1 - tipFrac * 0.65);
+          const sz = dot.size * (1 - tipFrac * 0.45);
 
           ctx.beginPath();
-          ctx.arc(x, y, size, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.arc(x, y, sz, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${a})`;
           ctx.fill();
         }
       };
 
-      drawSpikeSamples(emissionRef.current, waveAmp, N_SPIKE);
-      drawSpikeSamples(counterRef.current, counterAmp, Math.floor(N_SPIKE * 0.35));
+      drawSpikeCloud(emissionRef.current, spikeRef.current, waveAmp);
+      drawSpikeCloud(counterRef.current, counterCloudRef.current, counterAmp);
 
       // ── Layer 3 — disk mask ───────────────────────────────────────────────
       ctx.globalCompositeOperation = "destination-out";
@@ -270,7 +317,8 @@ export default function PythiaCircle({
       const ringAlpha = s === "idle" ? 0.6 : 0.9;
 
       for (const dot of ringRef.current) {
-        const breathe = Math.sin(totalT * 0.45 + dot.phase) * breatheAmp;
+        // Was 0.45, now 0.22
+        const breathe = Math.sin(totalT * 0.22 + dot.phase) * breatheAmp;
         const rimWave =
           waveAt(dot.baseAngle, totalT, emissionRef.current, baseR, waveAmp) * 0.15 +
           waveAt(dot.baseAngle, totalT, counterRef.current, baseR, counterAmp) * 0.15;
@@ -305,14 +353,4 @@ export default function PythiaCircle({
   }, [onReturnComplete]);
 
   return <canvas ref={canvasRef} className={styles.canvas} />;
-}
-
-function makeCounter(mainAngle) {
-  return {
-    angle: mainAngle + Math.PI,
-    halfWidth: 0.55,
-    strength: 0.32,
-    seed: Math.random() * 10,
-    daggers: [], // counter-arc has no daggers
-  };
 }
