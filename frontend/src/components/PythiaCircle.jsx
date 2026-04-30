@@ -2,20 +2,20 @@ import { useRef, useEffect } from "react";
 import styles from "src/components/PythiaCircle.module.css";
 
 /**
- * Canvas stipple ring with a layered wave/disk composition.
+ * Canvas stipple ring inspired by the Rehoboam structure: a flat disk in
+ * the foreground with a textured "crater" of fibers behind it. Most of the
+ * crater is hidden by the disk silhouette; only formations that grow past
+ * the rim become visible — broad fluffy bases and 1–3 sharp daggers per
+ * divergence.
  *
- * Layers from back to front:
- *   1. Spike cloud   — stochastic dots scattered in a polar zone around the
- *                      ring. Their angular distribution is biased toward the
- *                      emission angle; their radial reach grows with the wave
- *                      amplitude. Most of the cloud is masked by the disk;
- *                      only spikes that grow past the rim become visible,
- *                      forming the finger-like silhouette.
- *   2. Disk mask     — destination-out fill of radius baseR-1, erases
- *                      everything inside the rim back to transparency.
- *   3. Rim           — stipple ring drawn last; lives on top of the disk.
- *                      Slightly perturbed by the wave so the spike base feels
- *                      attached to the rim rather than floating.
+ * Layer order (back → front):
+ *   1. Frost halo     — always-on per-frame cloud hugging the rim. Suggests
+ *                       the back of the crater leaking around the disk.
+ *   2. Spike cloud    — wave-driven bursts at the emission angle, plus
+ *                       narrow "dagger" sub-emissions for dramatic outliers.
+ *   3. Disk mask      — destination-out fill, erases the inner area.
+ *   4. Rim            — stipple boundary on top of the disk, slightly
+ *                       perturbed so the spike base feels anchored.
  *
  * Props:
  *   state            — "idle" | "analyzing" | "divergence" | "returning"
@@ -25,21 +25,19 @@ import styles from "src/components/PythiaCircle.module.css";
  *   onReturnComplete — fired once the "returning" animation finishes
  */
 
-const N_RING = 720;
-const N_SPIKE_SAMPLES = 520; // stochastic samples per frame
+const N_RING = 600;
+const N_FROST = 220; // ambient rim halo, every frame
+const N_SPIKE = 700; // spike cloud, every frame when active
 const RETURN_DUR = 2.5;
 
 function initRing() {
   const dots = [];
   for (let i = 0; i < N_RING; i++) {
-    const halo = Math.random() > 0.78;
     dots.push({
-      baseAngle: (i / N_RING) * Math.PI * 2 + (Math.random() - 0.5) * 0.006,
-      jitter: halo
-        ? (Math.random() - 0.5) * 6
-        : (Math.random() - 0.5) * 2.0,
+      baseAngle: (i / N_RING) * Math.PI * 2 + (Math.random() - 0.5) * 0.005,
+      jitter: (Math.random() - 0.5) * 1.8,
       phase: Math.random() * Math.PI * 2,
-      size: Math.random() * 0.7 + 0.45,
+      size: Math.random() * 0.65 + 0.45,
       baseOpacity: Math.random() * 0.18 + 0.72,
     });
   }
@@ -47,21 +45,32 @@ function initRing() {
 }
 
 function makeEmission(criticality, angle = null) {
+  const baseAngle = angle ?? Math.random() * Math.PI * 2;
+  const halfWidth = 0.34 + (criticality / 10) * 0.36;
+
+  // 1-3 daggers — narrow, sharp sub-emissions inside the main envelope
+  const nDaggers = 1 + Math.floor(Math.random() * 3);
+  const daggers = [];
+  for (let i = 0; i < nDaggers; i++) {
+    daggers.push({
+      angle: baseAngle + (Math.random() - 0.5) * halfWidth * 1.3,
+      halfWidth: 0.025 + Math.random() * 0.04,
+      reachMul: 1.4 + Math.random() * 1.1, // 1.4× to 2.5× of the broad reach
+      seed: Math.random() * 10,
+    });
+  }
+
   return {
-    angle: angle ?? Math.random() * Math.PI * 2,
-    halfWidth: 0.32 + (criticality / 10) * 0.38,
+    angle: baseAngle,
+    halfWidth,
     strength: 0.55 + (criticality / 10) * 0.55,
     seed: Math.random() * 10,
+    daggers,
   };
 }
 
-// Wave amplitude at a given angle, in pixels of outward radial reach.
-// Mostly stationary spike pattern (indexed by da + seed) with a slow
-// temporal wobble — feels like frozen crystals that breathe rather than
-// like flowing water.
-function waveAt(angle, t, em, baseR, amp) {
-  if (!em || amp <= 0) return 0;
-
+// Broad fluffy base of the spike formation.
+function broadWaveAt(angle, t, em, baseR, amp) {
   let da = angle - em.angle;
   while (da > Math.PI) da -= Math.PI * 2;
   while (da < -Math.PI) da += Math.PI * 2;
@@ -69,25 +78,45 @@ function waveAt(angle, t, em, baseR, amp) {
   const env = Math.exp(-(da * da) / (2 * em.halfWidth * em.halfWidth));
   if (env < 0.015) return 0;
 
-  // Spatial spike pattern — stationary across time so the shape is recognizable
   const seed = em.seed;
-  const w1 = Math.sin(da * 13 + seed * 17);
-  const w2 = Math.sin(da * 27 + seed * 31) * 0.55;
-  const w3 = Math.sin(da * 51 + seed * 43) * 0.32;
+  const w1 = Math.sin(da * 11 + seed * 17);
+  const w2 = Math.sin(da * 26 + seed * 31) * 0.6;
+  const w3 = Math.sin(da * 49 + seed * 43) * 0.32;
   const wobble = 0.85 + Math.sin(t * 0.45 + seed) * 0.15;
 
-  const composite = (w1 * 0.65 + w2 + w3) * wobble;
-  // Outward bias — only positive lobes produce visible spikes
+  const composite = (w1 * 0.7 + w2 + w3) * wobble;
   const shaped = composite > 0 ? Math.pow(composite, 1.25) : 0;
 
-  return env * shaped * amp * em.strength * baseR * 0.55;
+  return env * shaped * amp * em.strength * baseR * 0.42;
 }
 
-// Sample an angle biased toward em.angle with roughly Gaussian density —
-// avoids wasting samples on zones where the envelope is essentially zero.
+// Dagger contribution — narrow, sharp, longer reach.
+function daggerWaveAt(angle, t, em, baseR, amp) {
+  if (!em.daggers) return 0;
+  let total = 0;
+  for (const d of em.daggers) {
+    let da = angle - d.angle;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+
+    const env = Math.exp(-(da * da) / (2 * d.halfWidth * d.halfWidth));
+    if (env < 0.02) continue;
+
+    const wobble = 0.88 + Math.sin(t * 0.7 + d.seed * 3) * 0.12;
+    total += env * wobble * amp * em.strength * baseR * 0.32 * d.reachMul;
+  }
+  return total;
+}
+
+function waveAt(angle, t, em, baseR, amp) {
+  if (!em || amp <= 0) return 0;
+  return broadWaveAt(angle, t, em, baseR, amp) + daggerWaveAt(angle, t, em, baseR, amp);
+}
+
+// Triangular sampling around em.angle — concentrates samples where the envelope matters
 function sampleEmissionAngle(em) {
-  const u = Math.random() + Math.random() - 1; // triangular ~ Gaussian
-  return em.angle + u * em.halfWidth * 1.6;
+  const u = Math.random() + Math.random() - 1;
+  return em.angle + u * em.halfWidth * 1.7;
 }
 
 export default function PythiaCircle({
@@ -119,20 +148,10 @@ export default function PythiaCircle({
 
     if (state === "analyzing") {
       emissionRef.current = makeEmission(criticality, emissionAngle);
-      counterRef.current = {
-        angle: emissionRef.current.angle + Math.PI,
-        halfWidth: 0.55,
-        strength: 0.32,
-        seed: Math.random() * 10,
-      };
+      counterRef.current = makeCounter(emissionRef.current.angle);
     } else if (state === "divergence") {
       if (!emissionRef.current) emissionRef.current = makeEmission(criticality, emissionAngle);
-      counterRef.current = {
-        angle: emissionRef.current.angle + Math.PI,
-        halfWidth: 0.55,
-        strength: 0.32,
-        seed: Math.random() * 10,
-      };
+      counterRef.current = makeCounter(emissionRef.current.angle);
     } else if (state === "idle") {
       emissionRef.current = null;
       counterRef.current = null;
@@ -184,67 +203,77 @@ export default function PythiaCircle({
       const counterAmp =
         queue > 0 && waveAmp > 0 ? Math.min(queue / 3, 1) * 0.45 * waveAmp : 0;
 
-      // ── Layer 1 — spike cloud (additive) ──────────────────────────────────
-      // Most of these dots land inside the disk and will be masked away.
-      // The fraction that lands beyond the rim forms the visible spikes.
-      if (waveAmp > 0 || counterAmp > 0) {
-        ctx.globalCompositeOperation = "lighter";
+      ctx.globalCompositeOperation = "lighter";
 
-        const drawSpikeSamples = (em, amp, n) => {
-          if (!em || amp <= 0) return;
-          for (let i = 0; i < n; i++) {
-            const angle = sampleEmissionAngle(em);
-            const reach = waveAt(angle, totalT, em, baseR, amp);
-            if (reach <= 0) continue;
-
-            // Radial position: from slightly inside the rim to the spike tip.
-            // pow bias concentrates dots near the base (denser there).
-            const u = Math.pow(Math.random(), 1.4);
-            const inset = Math.random() * 8;
-            const radialOffset = -inset + (reach + inset) * u;
-            const r = baseR + radialOffset;
-
-            // Small angular jitter so spikes look watercolor-feathery
-            const aJitter = (Math.random() - 0.5) * 0.05;
-            const x = cx + Math.cos(angle + aJitter) * r;
-            const y = cy + Math.sin(angle + aJitter) * r;
-
-            // Tip taper — opacity and size decrease toward the tip
-            const tipFrac = u; // 0 at base, 1 at tip
-            const alpha = (1 - tipFrac * 0.7) * 0.55;
-            const size = (1 - tipFrac * 0.55) * 0.55 + 0.22;
-
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-            ctx.fill();
-          }
-        };
-
-        drawSpikeSamples(emissionRef.current, waveAmp, N_SPIKE_SAMPLES);
-        drawSpikeSamples(counterRef.current, counterAmp, Math.floor(N_SPIKE_SAMPLES * 0.4));
+      // ── Layer 1 — frost halo (always on) ──────────────────────────────────
+      // Suggests the back of the crater visible around the disk silhouette.
+      // Slightly modulated by the breathing phase and brightened during events.
+      const frostBoost = 1 + waveAmp * 0.4;
+      const frostAlpha = 0.16 * frostBoost;
+      for (let i = 0; i < N_FROST; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const u = Math.pow(Math.random(), 1.7);
+        const radialOffset = -2 + 9 * u;
+        const r = baseR + radialOffset;
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+        const alpha = (1 - u) * frostAlpha;
+        const size = 0.25 + Math.random() * 0.35;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.fill();
       }
 
-      // ── Layer 2 — disk mask ───────────────────────────────────────────────
-      // Erases the inner region back to transparency, hiding the inward part
-      // of the spike cloud. The body's black bg shows through.
+      // ── Layer 2 — spike cloud + daggers ───────────────────────────────────
+      const drawSpikeSamples = (em, amp, n) => {
+        if (!em || amp <= 0) return;
+        for (let i = 0; i < n; i++) {
+          const angle = sampleEmissionAngle(em);
+          const reach = waveAt(angle, totalT, em, baseR, amp);
+          if (reach <= 0) continue;
+
+          const u = Math.pow(Math.random(), 1.5);
+          const inset = Math.random() * 8;
+          const radialOffset = -inset + (reach + inset) * u;
+          const r = baseR + radialOffset;
+
+          const aJitter = (Math.random() - 0.5) * 0.045;
+          const x = cx + Math.cos(angle + aJitter) * r;
+          const y = cy + Math.sin(angle + aJitter) * r;
+
+          // Bright base, faded tip — but not zero, so daggers stay legible
+          const tipFrac = u;
+          const alpha = (1 - tipFrac * 0.7) * 0.5;
+          const size = (1 - tipFrac * 0.55) * 0.5 + 0.18;
+
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.fill();
+        }
+      };
+
+      drawSpikeSamples(emissionRef.current, waveAmp, N_SPIKE);
+      drawSpikeSamples(counterRef.current, counterAmp, Math.floor(N_SPIKE * 0.35));
+
+      // ── Layer 3 — disk mask ───────────────────────────────────────────────
       ctx.globalCompositeOperation = "destination-out";
       ctx.beginPath();
       ctx.arc(cx, cy, baseR - 1, 0, Math.PI * 2);
       ctx.fill();
 
-      // ── Layer 3 — rim ─────────────────────────────────────────────────────
+      // ── Layer 4 — rim ─────────────────────────────────────────────────────
       ctx.globalCompositeOperation = "lighter";
 
-      const breatheAmp = s === "idle" ? 1.3 : 0.65;
-      const ringAlpha = s === "idle" ? 0.55 : 0.85;
+      const breatheAmp = s === "idle" ? 1.2 : 0.6;
+      const ringAlpha = s === "idle" ? 0.6 : 0.9;
 
       for (const dot of ringRef.current) {
         const breathe = Math.sin(totalT * 0.45 + dot.phase) * breatheAmp;
-        // Subtle rim displacement so spike bases feel anchored to the rim
         const rimWave =
-          waveAt(dot.baseAngle, totalT, emissionRef.current, baseR, waveAmp) * 0.18 +
-          waveAt(dot.baseAngle, totalT, counterRef.current, baseR, counterAmp) * 0.18;
+          waveAt(dot.baseAngle, totalT, emissionRef.current, baseR, waveAmp) * 0.15 +
+          waveAt(dot.baseAngle, totalT, counterRef.current, baseR, counterAmp) * 0.15;
 
         const r = baseR + dot.jitter + breathe + rimWave;
         const x = cx + Math.cos(dot.baseAngle) * r;
@@ -276,4 +305,14 @@ export default function PythiaCircle({
   }, [onReturnComplete]);
 
   return <canvas ref={canvasRef} className={styles.canvas} />;
+}
+
+function makeCounter(mainAngle) {
+  return {
+    angle: mainAngle + Math.PI,
+    halfWidth: 0.55,
+    strength: 0.32,
+    seed: Math.random() * 10,
+    daggers: [], // counter-arc has no daggers
+  };
 }
