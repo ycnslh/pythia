@@ -86,19 +86,15 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
   // Place the block so it flows away from the center.
   // When the angle is mostly horizontal: flow left/right, center vertically.
   // When mostly vertical: flow up/down, center horizontally.
-  let blockLeft, blockTop, lineEndX, lineEndY;
+  let blockLeft, blockTop;
   if (Math.abs(radX) >= Math.abs(radY)) {
     // Horizontal dominant
     blockLeft = radX >= 0 ? attachX : attachX - BLOCK_W;
     blockTop  = attachY - BLOCK_H / 2;
-    lineEndX  = radX >= 0 ? blockLeft : blockLeft + BLOCK_W; // nearest vertical edge
-    lineEndY  = blockTop + BLOCK_H / 2;                      // middle of that edge
   } else {
     // Vertical dominant
     blockLeft = attachX - BLOCK_W / 2;
     blockTop  = radY >= 0 ? attachY : attachY - BLOCK_H;
-    lineEndX  = blockLeft + BLOCK_W / 2;                     // middle of nearest horizontal edge
-    lineEndY  = radY >= 0 ? blockTop : blockTop + BLOCK_H;
   }
 
   // Clamp to viewport so the block never clips off-screen
@@ -183,9 +179,8 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
             </div>
           </div>
 
-          {/* SVG leader line — fades with the data block.
-              Hexagonal marker on the ring + thin line to the data block,
-              matching the Rehoboam-style HUD aesthetic. */}
+          {/* Hexagonal registration marker on the ring — fades with the data
+              block. (Leader line removed.) */}
           <svg
             className={styles.leaderSvg}
             style={{ opacity: dataOpacity }}
@@ -196,10 +191,6 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
               fill="none"
               stroke="rgba(255,255,255,0.7)"
               strokeWidth={0.8}
-            />
-            <line
-              x1={anchorX} y1={anchorY} x2={lineEndX} y2={lineEndY}
-              stroke="rgba(255,255,255,0.45)" strokeWidth={0.6}
             />
           </svg>
         </>
