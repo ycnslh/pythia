@@ -57,6 +57,17 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
   const cx = vp.w / 2;
   const cy = vp.h / 2;
 
+  // ── Incite-style registration marks — decorative, ambient only ─────────────
+  // Three "+" just outside the ring, blinking in sequence (staggered delay).
+  const crossMarks = [30, 150, 270].map((deg, i) => {
+    const a = (deg * Math.PI) / 180;
+    return {
+      left: cx + Math.cos(a) * (circleR + 28),
+      top: cy + Math.sin(a) * (circleR + 28),
+      delay: `${i * 0.8}s`,
+    };
+  });
+
   // ── Radial placement ────────────────────────────────────────────────────────
   // Use the provided angle, falling back to a fixed position for the idle state
   // (which is only ever rendered at opacity 0, so it doesn't matter visually).
@@ -123,6 +134,17 @@ export default function HUDOverlay({ t, event, state, queueSize = 0, anchorAngle
 
       {/* System status panel — below brand */}
       <SystemPanel t={t} />
+
+      {/* Registration crosshairs — blinking "+" around the ring (ambiance) */}
+      {crossMarks.map((m, i) => (
+        <span
+          key={i}
+          className={styles.cross}
+          style={{ left: m.left, top: m.top, animationDelay: m.delay }}
+        >
+          +
+        </span>
+      ))}
 
       {/* Analyzing indicator — same position as data block, fades in during analyzing */}
       <div

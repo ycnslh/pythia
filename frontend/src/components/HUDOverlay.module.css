@@ -109,6 +109,27 @@
   opacity: 0.85;
 }
 
+/* ── Registration crosshairs ───────────────────────────────────────────────── */
+.cross {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  opacity: 0.25;
+  animation: crossBlink 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes crossBlink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
 /* ── Leader line SVG ───────────────────────────────────────────────────────── */
 .leaderSvg {
   position: absolute;
