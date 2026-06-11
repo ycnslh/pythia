@@ -3,6 +3,8 @@
 > Divergence monitoring ambient display powered by an LLM.
 > Inspired by the Rehoboam system from Westworld.
 
+![PYTHIA display view](docs/screenshot-display.png)
+
 PYTHIA is an autonomous divergence monitoring system. It continuously ingests events from configurable sources (RSS feeds, Uptime Kuma, webhooks), evaluates their criticality using an LLM, and renders the result as a fullscreen ambient visual interface.
 
 It is designed to run silently on a dedicated screen — no interaction, no authentication.
@@ -13,6 +15,8 @@ It is designed to run silently on a dedicated screen — no interaction, no auth
 |---|---|
 | `/display` | Fullscreen ambient display — meant for a dedicated screen |
 | `/feed` | Chronological log of all evaluated events |
+
+The display renders a procedural geodesic sphere (Canvas 2D) that deforms when a divergence is detected, plus a HUD with live system metrics (CPU/RAM/disk, GPU and temperatures on Linux/Jetson, source health, LLM provider).
 
 ## Architecture
 
@@ -26,11 +30,11 @@ Ingestion Layer (FastAPI)
 └── Webhook receiver
       │
       ▼
-Evaluator (OpenAI-compatible API)
+Evaluator (OpenAI-compatible API, streaming)
 → Returns structured JSON: { criticality, category, title, summary, location, source, timestamp }
       │
       ▼
-Event Queue (in-memory)
+Event Queue (in-memory, last 100 events)
       │
       ▼
 WebSocket broadcast
@@ -85,6 +89,16 @@ sources:
     path: /webhook/alerts  # POST endpoint exposed by PYTHIA
 ```
 
+## API
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Backend health + active WebSocket connection count |
+| `GET /api/events` | Last 100 evaluated events |
+| `GET /api/system` | Hardware metrics, source health, LLM provider/model |
+| `WS /ws` | Event stream — replays history on connect, then broadcasts live |
+| `POST /webhook/<path>` | One endpoint per `webhook` source defined in `sources.yaml` |
+
 ## Deployment
 
 Deployment is fully automated via the GitHub Actions CI/CD pipeline on push to `main`.
@@ -98,11 +112,32 @@ The self-hosted runner runs backend and frontend tests, then:
 
 To trigger a deploy: push to `main`.
 
+## Local development
+
+```bash
+# Backend (port 8000)
+cd backend && pip install -r requirements.txt
+uvicorn main:app --reload
+
+# Frontend (Vite dev server, proxies /api and /ws to localhost:8000)
+cd frontend && npm install
+npm run dev
+```
+
+Tests:
+
+```bash
+cd backend && python -m pytest tests/ -v
+cd frontend && npm test -- --run
+```
+
+`scripts/check-env.sh` validates a `.env` file against `.env.example`.
+
 ## Adding a source
 
 1. Create `backend/sources/my_source.py` extending `BaseSource`
 2. Implement `fetch()` returning `List[RawEvent]`
-3. Register the type in `backend/sources/__init__.py`
+3. Register the type in `SOURCE_REGISTRY` in `backend/sources/__init__.py`
 4. Add an entry in `sources.yaml`
 
 ## Criticality scale

@@ -56,12 +56,15 @@ sources:
 After the first push to `main`, confirm everything is running:
 
 ```bash
+# .env complete? (validates against .env.example)
+bash scripts/check-env.sh
+
 # All containers healthy?
 docker compose ps
 
 # Backend health endpoint
 curl http://localhost:8082/health
-# Expected: {"status":"ok"}
+# Expected: {"status":"ok","connections":0}
 
 # Events API
 curl http://localhost:8082/api/events
@@ -93,7 +96,7 @@ To change it without a push:
 docker compose up -d --force-recreate pythia-backend
 ```
 
-Any model available on OpenRouter works.
+Any model available on OpenRouter works — or any other OpenAI-compatible endpoint by changing `LLM_URL` as well. Pick a model that follows JSON-output instructions reliably; the evaluator rejects and retries malformed responses.
 
 ## 6. Updating PYTHIA
 
