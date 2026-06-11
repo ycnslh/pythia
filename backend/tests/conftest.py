@@ -2,8 +2,9 @@ import os
 
 # Set env vars before any module imports to avoid pydantic-settings reading a
 # real .env file during tests.
-os.environ.setdefault("OLLAMA_URL", "http://localhost:11434")
-os.environ.setdefault("OLLAMA_MODEL", "test-model")
+os.environ.setdefault("LLM_URL", "http://localhost:11434/v1")
+os.environ.setdefault("LLM_MODEL", "test-model")
+os.environ.setdefault("LLM_API_KEY", "test-key")
 os.environ.setdefault("PYTHIA_LANGUAGE", "en")
 os.environ.setdefault("CRITICALITY_THRESHOLD", "1.0")
 
