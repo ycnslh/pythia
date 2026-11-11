@@ -3,8 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from sources.rss import RSSSource, MAX_ENTRIES, SEEN_CAP
-
+from sources.rss import MAX_ENTRIES, SEEN_CAP, RSSSource
 
 # ─── Fixtures & helpers ───────────────────────────────────────────────────────
 
@@ -136,3 +135,69 @@ async def test_fetch_trims_seen_set_when_over_cap(rss_source):
         await rss_source.fetch()
 
     assert len(rss_source._seen) < SEEN_CAP
+
+
+# ─── Persisted state ──────────────────────────────────────────────────────────
+
+
+async def test_seen_ids_survive_a_restart(rss_source):
+    entries = [make_entry("Entry", link="https://example.com/1", uid="uid-1")]
+    with patch("sources.rss.feedparser.parse", return_value=make_feed(entries)):
+        assert len(await rss_source.fetch()) == 1
+        state = rss_source.export_state()
+
+        restarted = RSSSource({"name": "Test Feed", "url": "https://example.com/feed.xml"})
+        restarted._download = AsyncMock(return_value=b"<rss/>")
+        restarted.load_state(state)
+        assert await restarted.fetch() == []  # already seen: not evaluated again
+
+
+def test_load_state_ignores_garbage():
+    source = RSSSource({"name": "x", "url": "u"})
+    source.load_state({"seen": "not a list"})
+    source.load_state({})
+    assert len(source._seen) == 0
+
+
+def test_load_state_caps_size():
+    source = RSSSource({"name": "x", "url": "u"})
+    source.load_state({"seen": [str(i) for i in range(SEEN_CAP + 500)]})
+    assert len(source._seen) == SEEN_CAP
+
+
+# ─── First-poll baseline ──────────────────────────────────────────────────────
+
+
+async def test_first_poll_swallows_the_older_backlog(rss_source):
+    entries = [make_entry(f"Entry {i}", uid=f"uid-{i}") for i in range(MAX_ENTRIES + 8)]
+    with patch("sources.rss.feedparser.parse", return_value=make_feed(entries)):
+        first = await rss_source.fetch()
+        second = await rss_source.fetch()
+
+    assert len(first) == MAX_ENTRIES
+    assert second == []  # the 8 older items were marked seen, not queued for later
+
+
+async def test_later_bursts_are_still_spread_over_polls(rss_source):
+    with patch("sources.rss.feedparser.parse", return_value=make_feed([make_entry("old", uid="old")])):
+        await rss_source.fetch()  # baseline poll
+
+    burst = [make_entry(f"New {i}", uid=f"new-{i}") for i in range(MAX_ENTRIES + 3)]
+    with patch("sources.rss.feedparser.parse", return_value=make_feed(burst)):
+        first = await rss_source.fetch()
+        second = await rss_source.fetch()
+
+    assert len(first) == MAX_ENTRIES
+    assert len(second) == 3  # the rest follows on the next poll
+
+
+async def test_restored_state_counts_as_already_primed():
+    source = RSSSource({"name": "x", "url": "u"})
+    source._download = AsyncMock(return_value=b"")
+    source.load_state({"seen": ["seen-1"]})
+    entries = [make_entry(f"E{i}", uid=f"u{i}") for i in range(MAX_ENTRIES + 3)]
+    with patch("sources.rss.feedparser.parse", return_value=make_feed(entries)):
+        first = await source.fetch()
+        second = await source.fetch()
+
+    assert len(first) == MAX_ENTRIES and len(second) == 3

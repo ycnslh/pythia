@@ -74,7 +74,12 @@ export default function SystemPanel({ t }) {
               <div className={styles.divider} />
               <div className={styles.llmBlock}>
                 <span className={styles.llmLabel}>{t.llm}</span>
-                <span className={styles.llmProvider}>{sys.llm.provider}</span>
+                <span className={styles.llmProvider}>
+                  {/* healthy is null until the first evaluation: shown as OK */}
+                  <span className={sys.llm.healthy === false ? styles.dotDown : styles.dotUp}>●</span>
+                  {" "}
+                  {sys.llm.provider}
+                </span>
                 <span className={styles.llmModel}>{sys.llm.model}</span>
               </div>
             </>

@@ -44,6 +44,7 @@ export function useWebSocket() {
   const delayRef = useRef(RECONNECT_DELAY_MS);
   const reconnectTimer = useRef(null);
   const isMounted = useRef(true);
+  const connectRef = useRef(null); // lets onclose re-enter connect() without a circular dependency
 
   const [events, setEvents] = useState({ lastEvent: null, eventHistory: [] });
   const [status, setStatus] = useState("connecting");
@@ -78,7 +79,13 @@ export function useWebSocket() {
     ws.onclose = () => {
       if (!isMounted.current) return;
       setStatus("disconnected");
-      scheduleReconnect();
+      reconnectTimer.current = setTimeout(() => {
+        delayRef.current = Math.min(
+          delayRef.current * RECONNECT_BACKOFF,
+          RECONNECT_DELAY_MAX_MS
+        );
+        connectRef.current();
+      }, delayRef.current);
     };
 
     ws.onerror = () => {
@@ -86,18 +93,9 @@ export function useWebSocket() {
     };
   }, []);
 
-  const scheduleReconnect = useCallback(() => {
-    reconnectTimer.current = setTimeout(() => {
-      delayRef.current = Math.min(
-        delayRef.current * RECONNECT_BACKOFF,
-        RECONNECT_DELAY_MAX_MS
-      );
-      connect();
-    }, delayRef.current);
-  }, [connect]);
-
   useEffect(() => {
     isMounted.current = true;
+    connectRef.current = connect;
     connect();
 
     return () => {

@@ -33,4 +33,4 @@ sources:
   # Each webhook becomes a POST endpoint on the backend
   # - type: webhook
   #   name: Custom Alerts
-  #   path: /webhook/alerts  # POST http://pythia-backend:8000/webhook/alerts
+  #   path: /webhook/alerts  # POST http://<host>:8081/webhook/alerts

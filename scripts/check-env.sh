@@ -4,7 +4,7 @@
 # Usage:  bash scripts/check-env.sh [path-to-.env]
 #
 # Keys with an empty default in .env.example (e.g. LLM_API_KEY=) are REQUIRED.
-# Keys with a non-empty default (e.g. BACKEND_PORT=8082) are optional warnings.
+# Keys with a non-empty default (e.g. PYTHIA_PORT=8081) are optional warnings.
 # Exits non-zero if any required key is missing from the target .env file.
 
 set -euo pipefail

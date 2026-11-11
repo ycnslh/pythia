@@ -2,7 +2,11 @@ import { useState, useEffect, useContext, useRef, useCallback } from "react";
 import PythiaCircle from "src/components/PythiaCircle";
 import HUDOverlay from "src/components/HUDOverlay";
 import { WSContext } from "src/App";
+import { config } from "src/config";
+import { dequeue, enqueue, isDisplayable } from "src/lib/displayQueue";
 import styles from "src/views/Display.module.css";
+
+const MAX_AGE_MS = config.maxAgeS * 1_000;
 
 // Display duration: linear scale — 8s base + 3s per criticality point
 // crit 1 → 8s, crit 5 → 20s, crit 10 → 35s
@@ -42,8 +46,9 @@ export default function Display({ t }) {
 
   // Stable advance — reads only refs + stable setState, no stale closure risk
   const advance = useCallback(() => {
-    const next = pendingRef.current.shift();
-    setQueueSize(pendingRef.current.length);
+    const { next, rest } = dequeue(pendingRef.current, Date.now(), MAX_AGE_MS);
+    pendingRef.current = rest;
+    setQueueSize(rest.length);
 
     if (!next) {
       setCircleState("idle");
@@ -82,9 +87,12 @@ export default function Display({ t }) {
 
   // Enqueue incoming events
   useEffect(() => {
-    if (!lastEvent) return;
-    pendingRef.current.push(lastEvent);
-    pendingRef.current.sort((a, b) => b.criticality - a.criticality);
+    // Below the display threshold an event lives in /feed only
+    if (!isDisplayable(lastEvent, config.displayThreshold)) return;
+    pendingRef.current = enqueue(pendingRef.current, lastEvent, Date.now(), {
+      max: config.queueMax,
+      maxAgeMs: MAX_AGE_MS,
+    });
     setQueueSize(pendingRef.current.length);
 
     // Use ref to check current state — avoids stale closure on circleState

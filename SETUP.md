@@ -21,9 +21,11 @@ Add the following **variables** (`vars`):
 | `LLM_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` |
 | `PYTHIA_LANGUAGE` | `en` |
 | `CRITICALITY_THRESHOLD` | `1` |
-| `BACKEND_PORT` | `8082` |
-| `FRONTEND_PORT` | `8081` |
+| `DISPLAY_THRESHOLD` | `4` |
+| `PYTHIA_PORT` | `8081` |
 | `SOURCES_FILE` | `sources.yaml` |
+
+`DISPLAY_QUEUE_MAX` (default `10`), `DISPLAY_MAX_AGE_S` (default `600`) and `LLM_CONCURRENCY` (default `2`) are optional. If you already had `FRONTEND_PORT` set, the deploy keeps using it as the port until you define `PYTHIA_PORT`; `BACKEND_PORT` is no longer used.
 
 Add the following **secret**:
 
@@ -59,20 +61,24 @@ After the first push to `main`, confirm everything is running:
 # .env complete? (validates against .env.example)
 bash scripts/check-env.sh
 
-# All containers healthy?
+# Container healthy?
 docker compose ps
 
-# Backend health endpoint
-curl http://localhost:8082/health
-# Expected: {"status":"ok","connections":0}
+# Health endpoint ("llm" is null until the first evaluation, then true/false)
+curl http://localhost:8081/health
+# Expected: {"status":"ok","connections":0,"llm":null}
 
 # Events API
-curl http://localhost:8082/api/events
+curl http://localhost:8081/api/events
 # Expected: {"events":[...]}
 
 # Frontend
 curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/
 # Expected: 200
+
+# Webhook (only if a `webhook` source is configured in sources.yaml)
+curl -X POST http://localhost:8081/webhook/alerts -H 'content-type: application/json' -d '{"title":"Test"}'
+# Expected: {"status":"accepted"}
 ```
 
 Open in a browser:
@@ -82,18 +88,18 @@ Open in a browser:
 Watch the backend logs to confirm LLM evaluation fires on the next RSS poll:
 
 ```bash
-docker compose logs -f pythia-backend
+docker compose logs -f pythia
 ```
 
 ## 5. Changing the model
 
-Update `LLM_MODEL` in the GitHub Environment, then push any commit to `main` to trigger a redeploy. No rebuild needed — only the backend restarts.
+Update `LLM_MODEL` in the GitHub Environment, then push any commit to `main` to trigger a redeploy.
 
 To change it without a push:
 
 ```bash
 # Edit .env directly on the machine, then:
-docker compose up -d --force-recreate pythia-backend
+docker compose up -d --force-recreate pythia
 ```
 
 Any model available on OpenRouter works — or any other OpenAI-compatible endpoint by changing `LLM_URL` as well. Pick a model that follows JSON-output instructions reliably; the evaluator rejects and retries malformed responses.
@@ -107,4 +113,4 @@ git pull
 docker compose up --build -d
 ```
 
-Containers with `restart: unless-stopped` come back automatically after a reboot.
+The container has `restart: unless-stopped` and comes back automatically after a reboot. Event history lives in the `pythia-data` volume: it survives updates. To start from a clean slate, run `docker compose down -v` (this deletes the volume).

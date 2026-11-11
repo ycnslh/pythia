@@ -60,3 +60,20 @@ async def test_network_error_propagates_for_scheduler(source):
     with patched_client(error=httpx.ConnectError("refused")):
         with pytest.raises(httpx.ConnectError):
             await source.fetch()
+
+
+async def test_known_state_survives_a_restart(source):
+    await fetch_with(source, 1)
+    state = source.export_state()
+
+    restarted = UptimeKumaSource({"name": "Kuma", "url": "http://kuma:3001"})
+    restarted.load_state(state)
+    # Went down while PYTHIA was off: the transition is reported right after restart
+    events = await fetch_with(restarted, 0)
+    assert [e.title for e in events] == ["API is DOWN"]
+
+
+def test_load_state_ignores_garbage():
+    source = UptimeKumaSource({"name": "Kuma", "url": "http://kuma:3001"})
+    source.load_state({"last_states": "nope"})
+    assert source.export_state() == {"last_states": {}}

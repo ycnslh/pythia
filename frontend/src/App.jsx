@@ -5,6 +5,7 @@ import Display from "src/views/Display";
 import Feed from "src/views/Feed";
 import en from "src/i18n/en";
 import fr from "src/i18n/fr";
+import { config } from "src/config";
 
 // Shared WebSocket context — single connection consumed by both views
 export const WSContext = createContext({
@@ -14,8 +15,7 @@ export const WSContext = createContext({
 });
 
 const I18N = { en, fr };
-const lang = import.meta.env.VITE_LANGUAGE || "en";
-const t = I18N[lang] ?? I18N.en;
+const t = I18N[config.language] ?? I18N.en;
 
 export default function App() {
   const ws = useWebSocket();

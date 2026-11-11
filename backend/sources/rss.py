@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import logging
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import List
 
 import feedparser
@@ -20,7 +20,7 @@ def _entry_published_at(entry) -> str | None:
     if parsed is None:
         return None
     try:
-        return datetime(*parsed[:6], tzinfo=timezone.utc).isoformat()
+        return datetime(*parsed[:6], tzinfo=UTC).isoformat()
     except Exception:
         return None
 
@@ -39,9 +39,21 @@ class RSSSource(BaseSource):
     def __init__(self, config: dict) -> None:
         super().__init__(config)
         self._seen: OrderedDict[str, None] = OrderedDict()
+        # False until the first successful poll (or restored state): that first poll
+        # only emits the newest entries and swallows the older backlog.
+        self._primed = False
 
     def get_type(self) -> str:
         return "rss"
+
+    def export_state(self) -> dict:
+        return {"seen": list(self._seen)}
+
+    def load_state(self, state: dict) -> None:
+        seen = state.get("seen", [])
+        if isinstance(seen, list):
+            self._seen = OrderedDict((str(uid), None) for uid in seen[-SEEN_CAP:])
+            self._primed = bool(self._seen)
 
     async def _download(self) -> bytes:
         """Download the feed with a bounded timeout. Raises on network/HTTP errors."""
@@ -66,11 +78,9 @@ class RSSSource(BaseSource):
 
         events: List[RawEvent] = []
         new_entries = 0
+        first_poll = not self._primed
 
         for entry in feed.entries:
-            if new_entries >= MAX_ENTRIES:
-                break
-
             uid = (
                 entry.get("id")
                 or entry.get("link")
@@ -79,6 +89,13 @@ class RSSSource(BaseSource):
 
             if uid in self._seen:
                 continue
+            if new_entries >= MAX_ENTRIES:
+                if first_poll:
+                    # Baseline: a feed holds dozens of old items; do not drip-feed
+                    # them to the LLM five at a time over the next polls.
+                    self._seen[uid] = None
+                    continue
+                break
             self._seen[uid] = None
             new_entries += 1
 
@@ -95,6 +112,8 @@ class RSSSource(BaseSource):
                     },
                 )
             )
+
+        self._primed = True
 
         # Trim _seen to avoid unbounded growth — remove oldest entries first
         if len(self._seen) > SEEN_CAP:

@@ -3,15 +3,18 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings, load_sources
+from config import load_sources, settings
+from dedupe import TitleDeduplicator
+from evaluator import llm_health
 from event_queue import queue
-from evaluator import evaluate
 from hardware import get_metrics
-from scheduler import start_scheduler, source_health
+from pipeline import process_event
+from scheduler import source_health, start_scheduler
 from sources import create_source
 from sources.webhook import build_webhook_router
+from static import find_static_dir, mount_frontend
+from store import StateStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +27,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     source_configs = load_sources()
 
+    store = StateStore(settings.data_dir)
+    queue.attach_store(store)
+    dedupe = TitleDeduplicator(store)
+
     pull_sources = [
         create_source(cfg)
         for cfg in source_configs
@@ -33,14 +40,16 @@ async def lifespan(app: FastAPI):
 
     # Mount webhook routes dynamically
     if webhook_configs:
-        webhook_router = build_webhook_router(
-            webhook_configs,
-            evaluate_fn=evaluate,
-            publish_fn=queue.publish,
-        )
-        app.include_router(webhook_router)
+        app.include_router(build_webhook_router(webhook_configs, process_fn=process_event))
 
-    tasks = start_scheduler(pull_sources)
+    # The SPA catch-all goes last so it never shadows the API or webhook routes
+    static_dir = find_static_dir()
+    if static_dir is not None:
+        mount_frontend(app, static_dir)
+    else:
+        logger.warning("No built frontend found — serving the API only")
+
+    tasks = start_scheduler(pull_sources, store, dedupe)
     logger.info(
         "PYTHIA started — %d pull source(s), %d webhook(s)",
         len(pull_sources),
@@ -53,19 +62,16 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="PYTHIA", version="0.1.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Local network only — no auth needed
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="PYTHIA", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "connections": queue.connection_count}
+    return {
+        "status": "ok",
+        "connections": queue.connection_count,
+        "llm": llm_health["ok"],
+    }
 
 
 @app.get("/api/events")
@@ -108,6 +114,8 @@ async def system_status():
     metrics["llm"] = {
         "provider": _llm_provider(settings.llm_url),
         "model": settings.llm_model,
+        # None until the first evaluation, then True/False
+        "healthy": llm_health["ok"],
     }
     return metrics
 
@@ -120,4 +128,8 @@ async def websocket_endpoint(ws: WebSocket):
             # Keep the connection alive; actual data flows server → client
             await ws.receive_text()
     except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.debug("WebSocket closed with an error", exc_info=True)
+    finally:
         queue.disconnect(ws)

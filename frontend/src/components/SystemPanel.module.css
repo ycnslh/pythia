@@ -181,3 +181,18 @@
   letter-spacing: 0.1em;
   flex-shrink: 0;
 }
+
+/* LLM endpoint status marker: bright = reachable, dim = last calls failed */
+.dotUp,
+.dotDown {
+  font-size: 0.5em;
+  vertical-align: middle;
+}
+
+.dotUp {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dotDown {
+  color: rgba(255, 255, 255, 0.25);
+}

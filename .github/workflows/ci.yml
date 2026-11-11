@@ -17,9 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─── Backend unit tests ────────────────────────────────────────────────────
+  # ─── Backend lint + unit tests ─────────────────────────────────────────────
   test-backend:
-    name: Backend tests
+    name: Backend lint & tests
     runs-on: self-hosted
     steps:
       - name: Clean root-owned files from previous runs
@@ -27,11 +27,11 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             python:3.11-slim \
-            sh -c "find /workspace/backend -type d \( -name __pycache__ -o -name .pytest_cache \) -exec rm -rf {} + 2>/dev/null; exit 0"
+            sh -c "find /workspace/backend -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) -exec rm -rf {} + 2>/dev/null; exit 0"
 
       - uses: actions/checkout@v5
 
-      - name: Run tests
+      - name: Lint and test
         run: |
           docker run --rm \
             --user $(id -u):$(id -g) \
@@ -39,23 +39,16 @@ jobs:
             -v ${{ github.workspace }}/backend:/app \
             -w /app \
             python:3.11-slim \
-            sh -c "python -m venv /tmp/venv && /tmp/venv/bin/pip install -r requirements.txt pytest pytest-asyncio -q && /tmp/venv/bin/pytest tests/ -v --tb=short -p no:cacheprovider"
+            sh -c "python -m venv /tmp/venv && /tmp/venv/bin/pip install -r requirements-dev.txt -q && /tmp/venv/bin/ruff check --no-cache . && /tmp/venv/bin/pytest tests/ -v --tb=short -p no:cacheprovider"
 
-  # ─── Frontend unit tests ───────────────────────────────────────────────────
+  # ─── Frontend lint + unit tests + build ────────────────────────────────────
   test-frontend:
-    name: Frontend tests
+    name: Frontend lint, tests & build
     runs-on: self-hosted
     steps:
-      - name: Clean root-owned files from previous runs
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            python:3.11-slim \
-            sh -c "find /workspace/backend -type d \( -name __pycache__ -o -name .pytest_cache \) -exec rm -rf {} + 2>/dev/null; exit 0"
-
       - uses: actions/checkout@v5
 
-      - name: Run tests
+      - name: Lint, test and build
         run: |
           docker run --rm \
             --user $(id -u):$(id -g) \
@@ -63,7 +56,7 @@ jobs:
             -v ${{ github.workspace }}/frontend:/app \
             -w /app \
             node:20-alpine \
-            sh -c "npm ci && npm test -- --run"
+            sh -c "npm ci && npm run lint && npm test -- --run && npm run build"
 
   # ─── Deploy (main branch only, after tests pass) ──────────────────────────
   deploy:
@@ -82,8 +75,11 @@ jobs:
           echo "LLM_API_KEY=${{ secrets.LLM_API_KEY }}" >> .env
           echo "PYTHIA_LANGUAGE=${{ vars.PYTHIA_LANGUAGE }}" >> .env
           echo "CRITICALITY_THRESHOLD=${{ vars.CRITICALITY_THRESHOLD }}" >> .env
-          echo "BACKEND_PORT=${{ vars.BACKEND_PORT }}" >> .env
-          echo "FRONTEND_PORT=${{ vars.FRONTEND_PORT }}" >> .env
+          echo "DISPLAY_THRESHOLD=${{ vars.DISPLAY_THRESHOLD || '4' }}" >> .env
+          echo "DISPLAY_QUEUE_MAX=${{ vars.DISPLAY_QUEUE_MAX || '10' }}" >> .env
+          echo "DISPLAY_MAX_AGE_S=${{ vars.DISPLAY_MAX_AGE_S || '600' }}" >> .env
+          echo "LLM_CONCURRENCY=${{ vars.LLM_CONCURRENCY || '2' }}" >> .env
+          echo "PYTHIA_PORT=${{ vars.PYTHIA_PORT || vars.FRONTEND_PORT || '8081' }}" >> .env
           echo "SOURCES_FILE=${{ vars.SOURCES_FILE }}" >> .env
 
       - name: Validate .env
@@ -91,35 +87,34 @@ jobs:
 
       - name: Stop existing containers
         run: |
-          docker stop pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
-          docker rm pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
+          # pythia-backend / pythia-frontend: the former two-container layout
+          docker stop pythia pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
+          docker rm pythia pythia-frontend pythia-backend pythia-llm 2>/dev/null || true
 
       - name: Build and start containers
-        run: docker compose up --build -d
+        run: docker compose up --build -d --remove-orphans
 
-      - name: Wait for backend health
+      - name: Wait for health
         run: |
-          PORT=$(grep '^BACKEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
-          PORT="${PORT:-8082}"
-          echo "Waiting for backend on port $PORT..."
+          PORT=$(grep '^PYTHIA_PORT=' .env | cut -d= -f2 | tr -d '\r')
+          PORT="${PORT:-8081}"
+          echo "Waiting for PYTHIA on port $PORT..."
           for i in $(seq 1 18); do
             if curl -sf "http://localhost:${PORT}/health" > /dev/null; then
-              echo "Backend is healthy (attempt $i)"
+              echo "PYTHIA is healthy (attempt $i)"
               exit 0
             fi
             echo "  attempt $i/18, retrying in 10s..."
             sleep 10
           done
-          echo "Backend did not become healthy within 3 minutes"
-          docker compose logs pythia-backend
+          echo "PYTHIA did not become healthy within 3 minutes"
+          docker compose logs pythia
           exit 1
 
       - name: Smoke tests
         run: |
-          PORT=$(grep '^BACKEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
-          PORT="${PORT:-8082}"
-          FPORT=$(grep '^FRONTEND_PORT=' .env | cut -d= -f2 | tr -d '\r')
-          FPORT="${FPORT:-8081}"
+          PORT=$(grep '^PYTHIA_PORT=' .env | cut -d= -f2 | tr -d '\r')
+          PORT="${PORT:-8081}"
           FAILED=0
 
           curl -sf "http://localhost:${PORT}/health" | grep -q '"ok"' \
@@ -130,9 +125,31 @@ jobs:
             && echo "PASS  /api/events" \
             || { echo "FAIL  /api/events"; FAILED=1; }
 
-          curl -sf "http://localhost:${FPORT}/" | grep -qi "pythia" \
-            && echo "PASS  frontend" \
-            || { echo "FAIL  frontend"; FAILED=1; }
+          curl -sf "http://localhost:${PORT}/api/system" | grep -q '"cpu"' \
+            && echo "PASS  /api/system" \
+            || { echo "FAIL  /api/system"; FAILED=1; }
+
+          curl -sf "http://localhost:${PORT}/display" | grep -qi "pythia" \
+            && echo "PASS  frontend (/display)" \
+            || { echo "FAIL  frontend (/display)"; FAILED=1; }
+
+          # WebSocket: the first frame must be the history frame
+          if docker compose exec -T pythia python - <<'PY'
+          import asyncio, json
+          import websockets
+
+          async def main():
+              async with websockets.connect("ws://localhost:8000/ws") as ws:
+                  frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                  assert frame["type"] == "history", frame
+
+          asyncio.run(main())
+          PY
+          then
+            echo "PASS  WebSocket history frame"
+          else
+            echo "FAIL  WebSocket history frame"; FAILED=1
+          fi
 
           [ $FAILED -eq 0 ] || exit 1
           echo "All smoke tests passed"

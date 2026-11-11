@@ -29,6 +29,14 @@ class UptimeKumaSource(BaseSource):
     def get_type(self) -> str:
         return "uptime_kuma"
 
+    def export_state(self) -> dict:
+        return {"last_states": self._last_states}
+
+    def load_state(self, state: dict) -> None:
+        states = state.get("last_states", {})
+        if isinstance(states, dict):
+            self._last_states = {str(k): int(v) for k, v in states.items()}
+
     async def fetch(self) -> List[RawEvent]:
         base_url = self.config["url"].rstrip("/")
         slug = self.config.get("slug", "default")
