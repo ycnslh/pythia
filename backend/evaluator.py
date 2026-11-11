@@ -35,11 +35,11 @@ Classify the news event using this exact schema:
 }
 
 Criticality scale (category MUST match):
-  1–3   → NOMINAL
-  4–5   → ELEVATED SCRUTINY
-  6–7   → DIVERGENCE
-  8–9   → INTERVENTION IN PROGRESS
-  10    → CRITICAL DIVERGENCE
+  1.0–3.9  → NOMINAL
+  4.0–5.9  → ELEVATED SCRUTINY
+  6.0–7.9  → DIVERGENCE
+  8.0–9.9  → INTERVENTION IN PROGRESS
+  10.0     → CRITICAL DIVERGENCE
 """,
     "fr": """\
 Tu es une API de classification JSON uniquement. Tu DOIS répondre avec un seul objet JSON et rien d'autre.
@@ -58,22 +58,33 @@ Classe l'événement d'actualité avec ce schéma exact :
 }
 
 Échelle de criticité (la catégorie DOIT correspondre) :
-  1–3   → NOMINAL
-  4–5   → ELEVATED SCRUTINY
-  6–7   → DIVERGENCE
-  8–9   → INTERVENTION IN PROGRESS
-  10    → CRITICAL DIVERGENCE
+  1.0–3.9  → NOMINAL
+  4.0–5.9  → ELEVATED SCRUTINY
+  6.0–7.9  → DIVERGENCE
+  8.0–9.9  → INTERVENTION IN PROGRESS
+  10.0     → CRITICAL DIVERGENCE
 """,
 }
 
 
-_CATEGORY_RANGES = {
-    "NOMINAL": (1, 3),
-    "ELEVATED SCRUTINY": (4, 5),
-    "DIVERGENCE": (6, 7),
-    "INTERVENTION IN PROGRESS": (8, 9),
-    "CRITICAL DIVERGENCE": (10, 10),
-}
+# Lower bound (inclusive) of each category on the continuous 1–10 scale, ascending.
+# Criticality is a float, so the bands must cover every value (5.5 is ELEVATED SCRUTINY).
+_CATEGORY_BANDS = [
+    (1.0, "NOMINAL"),
+    (4.0, "ELEVATED SCRUTINY"),
+    (6.0, "DIVERGENCE"),
+    (8.0, "INTERVENTION IN PROGRESS"),
+    (10.0, "CRITICAL DIVERGENCE"),
+]
+
+
+def category_for(criticality: float) -> str:
+    """Return the category that matches a criticality in [1, 10]."""
+    category = _CATEGORY_BANDS[0][1]
+    for lower, name in _CATEGORY_BANDS:
+        if criticality >= lower:
+            category = name
+    return category
 
 
 def _strip_thinking(text: str) -> str:
@@ -129,19 +140,18 @@ async def evaluate(event: RawEvent, retries: int = 2) -> EvaluatedEvent | None:
             if not (1.0 <= criticality <= 10.0):
                 raise ValueError(f"criticality {criticality} out of range [1–10]")
 
-            category = data["category"]
-            range_ = _CATEGORY_RANGES.get(category)
-            if range_ is None:
-                raise ValueError(f"Unknown category: {category!r}")
-            lo, hi = range_
-            if not (lo <= criticality <= hi):
-                raise ValueError(
-                    f"Category {category!r} requires criticality {lo}–{hi}, got {criticality}"
+            # The category is derived from the criticality so the two can never
+            # disagree; whatever category the model returned is ignored.
+            category = category_for(criticality)
+            if data.get("category") != category:
+                logger.debug(
+                    "Model category %r replaced by %r (criticality %.1f)",
+                    data.get("category"), category, criticality,
                 )
 
             return EvaluatedEvent(
                 criticality=criticality,
-                category=data["category"],
+                category=category,
                 title=data.get("title", event.title),
                 summary=data["summary"],
                 location=data.get("location"),

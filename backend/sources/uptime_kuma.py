@@ -38,14 +38,11 @@ class UptimeKumaSource(BaseSource):
         if api_key := self.config.get("api_key"):
             headers["Authorization"] = f"Bearer {api_key}"
 
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(endpoint, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception as e:
-            logger.error("Uptime Kuma fetch error for %s: %s", self.get_name(), e)
-            return []
+        # Errors propagate on purpose: the scheduler flags the source unhealthy and backs off.
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(endpoint, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
 
         events: List[RawEvent] = []
         heartbeat_list: Dict[str, list] = data.get("heartbeatList", {})
@@ -55,7 +52,10 @@ class UptimeKumaSource(BaseSource):
                 continue
 
             latest = heartbeats[-1]
-            status: int = latest.get("status", 1)  # 1=up, 0=down
+            status: int = latest.get("status", 1)  # 1=up, 0=down, 2=pending, 3=maintenance
+            # Pending/maintenance are transient: keep the last definitive state.
+            if status not in (0, 1):
+                continue
             monitor_name: str = latest.get("name", f"Monitor {monitor_id}")
 
             previous = self._last_states.get(monitor_id)

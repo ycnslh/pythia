@@ -44,9 +44,10 @@ async def test_publish_broadcasts_to_connected_clients(queue, evaluated_event):
     await queue.publish(evaluated_event)
 
     ws.send_json.assert_called_once()
-    payload = ws.send_json.call_args[0][0]
-    assert payload["criticality"] == evaluated_event.criticality
-    assert payload["category"] == evaluated_event.category
+    frame = ws.send_json.call_args[0][0]
+    assert frame["type"] == "event"
+    assert frame["event"]["criticality"] == evaluated_event.criticality
+    assert frame["event"]["category"] == evaluated_event.category
 
 
 async def test_publish_broadcasts_to_multiple_clients(queue, evaluated_event):
@@ -80,22 +81,25 @@ async def test_connect_accepts_websocket(queue):
     ws.accept.assert_called_once()
 
 
-async def test_connect_replays_history(queue, evaluated_event):
+async def test_connect_sends_history_as_single_frame(queue, evaluated_event):
+    await queue.publish(evaluated_event)
     await queue.publish(evaluated_event)
 
     ws = AsyncMock()
     await queue.connect(ws)
 
-    # History replay: send_json called once for the existing event
+    # History arrives in ONE frame, distinct from live "event" frames
     ws.send_json.assert_called_once()
-    payload = ws.send_json.call_args[0][0]
-    assert payload["title"] == evaluated_event.title
+    frame = ws.send_json.call_args[0][0]
+    assert frame["type"] == "history"
+    assert len(frame["events"]) == 2
+    assert frame["events"][0]["title"] == evaluated_event.title
 
 
-async def test_connect_no_history_no_replay(queue):
+async def test_connect_without_history_sends_empty_frame(queue):
     ws = AsyncMock()
     await queue.connect(ws)
-    ws.send_json.assert_not_called()
+    ws.send_json.assert_called_once_with({"type": "history", "events": []})
 
 
 def test_disconnect_removes_connection(queue):

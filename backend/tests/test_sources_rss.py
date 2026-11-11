@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -11,7 +11,11 @@ from sources.rss import RSSSource, MAX_ENTRIES, SEEN_CAP
 
 @pytest.fixture
 def rss_source():
-    return RSSSource({"name": "Test Feed", "url": "https://example.com/feed.xml"})
+    source = RSSSource({"name": "Test Feed", "url": "https://example.com/feed.xml"})
+    # No real network in tests: the downloaded payload is irrelevant because
+    # feedparser.parse is patched in each test.
+    source._download = AsyncMock(return_value=b"<rss/>")
+    return source
 
 
 def make_entry(title="Test Entry", link="https://example.com/1", uid=None, summary="Test summary"):
@@ -33,6 +37,7 @@ def make_feed(entries, feed_title="Test Feed Title"):
     feed = SimpleNamespace(
         entries=entries,
         feed=SimpleNamespace(title=feed_title, get=lambda key, default="": getattr(SimpleNamespace(title=feed_title), key, default)),
+        get=lambda key, default=None: default,  # like FeedParserDict.get (no bozo flag)
     )
     return feed
 
@@ -93,11 +98,30 @@ async def test_fetch_maps_fields_correctly(rss_source):
     assert events[0].description == "My summary"
 
 
-async def test_fetch_handles_network_error_gracefully(rss_source):
-    with patch("sources.rss.feedparser.parse", side_effect=Exception("network timeout")):
+async def test_fetch_propagates_network_errors(rss_source):
+    """Errors must reach the scheduler so it can flag the source and back off."""
+    rss_source._download = AsyncMock(side_effect=RuntimeError("network timeout"))
+
+    with pytest.raises(RuntimeError, match="network timeout"):
+        await rss_source.fetch()
+
+
+async def test_fetch_raises_on_unparseable_feed(rss_source):
+    feed = make_feed([])
+    feed.get = lambda key, default=None: {"bozo": True, "bozo_exception": "not xml"}.get(key, default)
+    with patch("sources.rss.feedparser.parse", return_value=feed):
+        with pytest.raises(ValueError, match="Unparseable feed"):
+            await rss_source.fetch()
+
+
+async def test_fetch_tolerates_bozo_feed_with_entries(rss_source):
+    """Minor XML defects (bozo) are fine as long as entries were recovered."""
+    feed = make_feed([make_entry("Entry", uid="uid-1")])
+    feed.get = lambda key, default=None: {"bozo": True}.get(key, default)
+    with patch("sources.rss.feedparser.parse", return_value=feed):
         events = await rss_source.fetch()
 
-    assert events == []
+    assert len(events) == 1
 
 
 async def test_fetch_trims_seen_set_when_over_cap(rss_source):

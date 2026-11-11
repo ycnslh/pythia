@@ -1,9 +1,10 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from evaluator import _extract_json, _strip_thinking, evaluate
+from evaluator import _extract_json, _strip_thinking, category_for, evaluate
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,52 @@ async def test_evaluate_returns_none_when_all_attempts_fail(raw_event):
 
     assert result is None
     assert mock_client.chat.completions.create.call_count == 2  # 1 + 1 retry
+
+
+@pytest.mark.parametrize(
+    "criticality,expected",
+    [
+        (1.0, "NOMINAL"),
+        (3.9, "NOMINAL"),
+        (4.0, "ELEVATED SCRUTINY"),
+        (5.5, "ELEVATED SCRUTINY"),
+        (6.0, "DIVERGENCE"),
+        (7.4, "DIVERGENCE"),
+        (8.0, "INTERVENTION IN PROGRESS"),
+        (9.5, "INTERVENTION IN PROGRESS"),
+        (10.0, "CRITICAL DIVERGENCE"),
+    ],
+)
+def test_category_for_covers_every_value(criticality, expected):
+    assert category_for(criticality) == expected
+
+
+@pytest.mark.parametrize("model_category", ["DIVERGENCE", "NOMINAL", "SOMETHING ELSE", None])
+async def test_evaluate_derives_category_from_criticality(raw_event, model_category):
+    """Fractional criticality and a wrong/missing model category must not drop the event."""
+    payload = {"criticality": 5.5, "summary": "Summary."}
+    if model_category is not None:
+        payload["category"] = model_category
+    with patch("evaluator.client") as mock_client:
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=FakeStream(json.dumps(payload))
+        )
+
+        result = await evaluate(raw_event)
+
+    assert result is not None
+    assert result.category == "ELEVATED SCRUTINY"
+    assert mock_client.chat.completions.create.call_count == 1  # no retry
+
+
+async def test_evaluate_rejects_out_of_range_criticality(raw_event):
+    bad = '{"criticality": 11, "category": "CRITICAL DIVERGENCE", "summary": "S."}'
+    with patch("evaluator.client") as mock_client:
+        mock_client.chat.completions.create = AsyncMock(return_value=FakeStream(bad))
+
+        result = await evaluate(raw_event, retries=0)
+
+    assert result is None
 
 
 async def test_evaluate_falls_back_to_event_title_when_missing(raw_event):

@@ -4,11 +4,38 @@ const RECONNECT_DELAY_MS = 3000;
 const RECONNECT_DELAY_MAX_MS = 30000;
 const RECONNECT_BACKOFF = 1.5;
 
+const HISTORY_MAX = 100;
+
+/**
+ * Pure reducer for one server frame. Frames are:
+ *   { type: "history", events: [...] }  — sent once per connection, oldest first
+ *   { type: "event",   event: {...} }   — a live event
+ *
+ * History REPLACES the list (a reconnect must not duplicate events) and never
+ * touches `lastEvent`, so /display does not replay old events on (re)connect.
+ * Only live events update `lastEvent`.
+ */
+export function applyFrame(state, frame) {
+  if (frame?.type === "history" && Array.isArray(frame.events)) {
+    return {
+      ...state,
+      eventHistory: [...frame.events].reverse().slice(0, HISTORY_MAX),
+    };
+  }
+  if (frame?.type === "event" && frame.event) {
+    return {
+      lastEvent: frame.event,
+      eventHistory: [frame.event, ...state.eventHistory].slice(0, HISTORY_MAX),
+    };
+  }
+  return state;
+}
+
 /**
  * Persistent WebSocket connection with exponential-backoff reconnect.
  *
  * Returns:
- *   lastEvent    — most recently received EvaluatedEvent (or null)
+ *   lastEvent    — most recent LIVE EvaluatedEvent (or null); never set by history
  *   eventHistory — full list, newest first
  *   status       — "connecting" | "connected" | "disconnected"
  */
@@ -18,8 +45,7 @@ export function useWebSocket() {
   const reconnectTimer = useRef(null);
   const isMounted = useRef(true);
 
-  const [lastEvent, setLastEvent] = useState(null);
-  const [eventHistory, setEventHistory] = useState([]);
+  const [events, setEvents] = useState({ lastEvent: null, eventHistory: [] });
   const [status, setStatus] = useState("connecting");
 
   const connect = useCallback(() => {
@@ -42,9 +68,8 @@ export function useWebSocket() {
     ws.onmessage = (msg) => {
       if (!isMounted.current) return;
       try {
-        const event = JSON.parse(msg.data);
-        setLastEvent(event);
-        setEventHistory((prev) => [event, ...prev].slice(0, 100));
+        const frame = JSON.parse(msg.data);
+        setEvents((prev) => applyFrame(prev, frame));
       } catch {
         // ignore malformed frames
       }
@@ -82,5 +107,5 @@ export function useWebSocket() {
     };
   }, [connect]);
 
-  return { lastEvent, eventHistory, status };
+  return { lastEvent: events.lastEvent, eventHistory: events.eventHistory, status };
 }

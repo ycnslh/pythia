@@ -21,12 +21,12 @@ class EventQueue:
         await ws.accept()
         self._connections.add(ws)
         logger.info("WebSocket connected. Active connections: %d", len(self._connections))
-        # Replay history to the new client
-        for event in self._history:
-            try:
-                await ws.send_json(event)
-            except Exception:
-                break
+        # Send history as ONE frame so clients can tell it apart from live events
+        # (the ambient display must not re-play old events on every reconnect).
+        try:
+            await ws.send_json({"type": "history", "events": list(self._history)})
+        except Exception:
+            pass
 
     def disconnect(self, ws: WebSocket) -> None:
         self._connections.discard(ws)
@@ -35,11 +35,12 @@ class EventQueue:
     async def publish(self, event: EvaluatedEvent) -> None:
         data = event.model_dump()
         self._history.append(data)
+        frame = {"type": "event", "event": data}
 
         dead: Set[WebSocket] = set()
-        for ws in self._connections:
+        for ws in list(self._connections):
             try:
-                await ws.send_json(data)
+                await ws.send_json(frame)
             except Exception as e:
                 logger.warning("Failed to send to WebSocket client: %s", e)
                 dead.add(ws)

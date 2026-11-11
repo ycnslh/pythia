@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import List
 
 import feedparser
+import httpx
 
 from models import RawEvent
 from sources.base import BaseSource
@@ -29,6 +30,9 @@ MAX_ENTRIES = 5
 # Cap on _seen OrderedDict size to bound memory usage (evicts oldest entries first)
 SEEN_CAP = 2000
 SEEN_TRIM = 1000
+# Network timeout (seconds) for downloading a feed
+FETCH_TIMEOUT = 15.0
+USER_AGENT = "PYTHIA/0.1 (+rss)"
 
 
 class RSSSource(BaseSource):
@@ -39,15 +43,26 @@ class RSSSource(BaseSource):
     def get_type(self) -> str:
         return "rss"
 
-    async def fetch(self) -> List[RawEvent]:
-        url = self.config["url"]
-        loop = asyncio.get_running_loop()
+    async def _download(self) -> bytes:
+        """Download the feed with a bounded timeout. Raises on network/HTTP errors."""
+        async with httpx.AsyncClient(
+            timeout=FETCH_TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+        ) as client:
+            resp = await client.get(self.config["url"])
+            resp.raise_for_status()
+            return resp.content
 
-        try:
-            feed = await loop.run_in_executor(None, feedparser.parse, url)
-        except Exception as e:
-            logger.error("RSS fetch error for %s: %s", self.get_name(), e)
-            return []
+    async def fetch(self) -> List[RawEvent]:
+        """
+        Errors (network, HTTP status, unparseable feed) are raised on purpose:
+        the scheduler uses them to flag the source unhealthy and back off.
+        """
+        content = await self._download()
+        loop = asyncio.get_running_loop()
+        feed = await loop.run_in_executor(None, feedparser.parse, content)
+
+        if feed.get("bozo") and not feed.entries:
+            raise ValueError(f"Unparseable feed: {feed.get('bozo_exception')!r}")
 
         events: List[RawEvent] = []
         new_entries = 0

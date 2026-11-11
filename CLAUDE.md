@@ -184,7 +184,7 @@ Key implementation details:
 - `_strip_thinking()` removes `<think>...</think>` blocks from reasoning models
 - `_extract_json()` falls back to a regex `\{.*\}` match if direct parsing fails
 - Up to 3 attempts (`retries=2`); returns `None` if all fail (event is dropped)
-- Validates `criticality` ∈ [1, 10] and that the category matches the criticality range (mismatch → retry)
+- Validates `criticality` ∈ [1, 10]; the category is derived server-side from the criticality (`category_for()`), so a wrong or missing model category never causes a retry
 - Timestamp comes from `raw_data["published_at"]` when the source provides one, otherwise `now()` UTC
 
 ### System prompt
@@ -220,13 +220,13 @@ The system prompt (English and French variants, selected by `PYTHIA_LANGUAGE`) m
 
 ### Criticality scale
 
-- `1–3` → NOMINAL
-- `4–5` → ELEVATED SCRUTINY
-- `6–7` → DIVERGENCE
-- `8–9` → INTERVENTION IN PROGRESS
-- `10` → CRITICAL DIVERGENCE
+- `1.0–3.9` → NOMINAL
+- `4.0–5.9` → ELEVATED SCRUTINY
+- `6.0–7.9` → DIVERGENCE
+- `8.0–9.9` → INTERVENTION IN PROGRESS
+- `10.0` → CRITICAL DIVERGENCE
 
-The category must always match the criticality range — the evaluator enforces this and retries on mismatch.
+The category always matches the criticality: the evaluator computes it from the score (continuous bands, so fractional scores like 5.5 are valid).
 
 ---
 
@@ -237,7 +237,7 @@ The category must always match the criticality range — the evaluator enforces 
 | `GET /health` | `{"status": "ok", "connections": <int>}` — used by the Docker healthcheck |
 | `GET /api/events` | Last 100 evaluated events (initial page load) |
 | `GET /api/system` | Hardware metrics, per-source health, LLM provider/model (consumed by SystemPanel) |
-| `WS /ws` | Persistent connection; replays history on connect, then broadcasts evaluated events |
+| `WS /ws` | Persistent connection; sends one `{"type":"history","events":[...]}` frame on connect (oldest first), then `{"type":"event","event":{...}}` frames for live events |
 | `POST /webhook/{path}` | One endpoint per `webhook` entry in `sources.yaml`, registered at startup |
 
 The scheduler tracks per-source health (`source_health`) and applies exponential backoff on polling errors (capped at 1h).

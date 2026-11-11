@@ -96,7 +96,7 @@ sources:
 | `GET /health` | Backend health + active WebSocket connection count |
 | `GET /api/events` | Last 100 evaluated events |
 | `GET /api/system` | Hardware metrics, source health, LLM provider/model |
-| `WS /ws` | Event stream — replays history on connect, then broadcasts live |
+| `WS /ws` | Event stream — one `history` frame on connect, then live `event` frames |
 | `POST /webhook/<path>` | One endpoint per `webhook` source defined in `sources.yaml` |
 
 ## Deployment
@@ -144,8 +144,8 @@ cd frontend && npm test -- --run
 
 | Range | Category |
 |---|---|
-| 1–3 | `NOMINAL` |
-| 4–5 | `ELEVATED SCRUTINY` |
-| 6–7 | `DIVERGENCE` |
-| 8–9 | `INTERVENTION IN PROGRESS` |
-| 10 | `CRITICAL DIVERGENCE` |
+| 1.0–3.9 | `NOMINAL` |
+| 4.0–5.9 | `ELEVATED SCRUTINY` |
+| 6.0–7.9 | `DIVERGENCE` |
+| 8.0–9.9 | `INTERVENTION IN PROGRESS` |
+| 10.0 | `CRITICAL DIVERGENCE` |
