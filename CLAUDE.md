@@ -151,7 +151,7 @@ class RawEvent(BaseModel):
 
 | Type | File | Behavior |
 |---|---|---|
-| `rss` | `sources/rss.py` | Downloads the feed (httpx, 15s timeout) every `interval`s, dedup by entry id/link/title hash, max 5 entries per poll. The first poll only emits the newest entries and marks the older backlog as seen |
+| `rss` | `sources/rss.py` | Downloads the feed (shared httpx client, 15s timeout, conditional GET with `ETag`/`Last-Modified`, a `304` means no change) every `interval`s, dedup by entry id/link/title hash, max 5 entries per poll. The first poll only emits the newest entries and marks the older backlog as seen |
 | `uptime_kuma` | `sources/uptime_kuma.py` | Polls `/api/status-page/heartbeat/{slug}`, emits an event only on up/down transitions |
 | `webhook` | `sources/webhook.py` | Push-based: registers a POST endpoint per config entry, accepts a JSON object (`title`, `description`/`message`/`text`, `url`, max 64 KB), answers `202` and evaluates in the background |
 
@@ -176,7 +176,8 @@ sources:
 ```
 
 Sources must **raise** on failure (network, HTTP, parsing) instead of returning `[]`: the scheduler uses the exception to mark the source unhealthy and back off.
-Sources may override `export_state()` / `load_state()` to persist what they must remember across restarts (RSS: seen ids, Uptime Kuma: last statuses).
+Pull sources get a lazily created, reused `httpx.AsyncClient` (`BaseSource.client`), closed at shutdown (`aclose()`); `get_if_changed()` adds the remembered validators and returns `None` on `304`.
+Sources may override `export_state()` / `load_state()` to persist what they must remember across restarts (RSS: seen ids and cache validators, Uptime Kuma: last statuses).
 
 ### Adding a new source
 

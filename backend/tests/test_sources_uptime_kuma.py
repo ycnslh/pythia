@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import httpx
 import pytest
 
@@ -11,28 +9,18 @@ def source():
     return UptimeKumaSource({"name": "Kuma", "url": "http://kuma:3001", "slug": "default"})
 
 
-def heartbeat_response(status: int, name: str = "API"):
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    resp.json = MagicMock(
-        return_value={"heartbeatList": {"1": [{"status": status, "name": name, "msg": "m"}]}}
-    )
-    return resp
+def heartbeat_json(status: int, name: str = "API") -> dict:
+    return {"heartbeatList": {"1": [{"status": status, "name": name, "msg": "m"}]}}
 
 
-def patched_client(response=None, error=None):
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    if error is not None:
-        client.get.side_effect = error
-    else:
-        client.get.return_value = response
-    return patch("sources.uptime_kuma.httpx.AsyncClient", return_value=client)
+def use_handler(source, handler):
+    """Route the source's HTTP client to `handler` (no real network)."""
+    source._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 async def fetch_with(source, status):
-    with patched_client(heartbeat_response(status)):
-        return await source.fetch()
+    use_handler(source, lambda request: httpx.Response(200, json=heartbeat_json(status)))
+    return await source.fetch()
 
 
 async def test_first_poll_sets_baseline_without_event(source):
@@ -57,9 +45,12 @@ async def test_pending_status_is_not_reported_as_down(source):
 
 
 async def test_network_error_propagates_for_scheduler(source):
-    with patched_client(error=httpx.ConnectError("refused")):
-        with pytest.raises(httpx.ConnectError):
-            await source.fetch()
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+
+    use_handler(source, refuse)
+    with pytest.raises(httpx.ConnectError):
+        await source.fetch()
 
 
 async def test_known_state_survives_a_restart(source):
@@ -77,3 +68,40 @@ def test_load_state_ignores_garbage():
     source = UptimeKumaSource({"name": "Kuma", "url": "http://kuma:3001"})
     source.load_state({"last_states": "nope"})
     assert source.export_state() == {"last_states": {}}
+
+
+async def test_http_error_propagates_for_scheduler(source):
+    use_handler(source, lambda request: httpx.Response(503))
+    with pytest.raises(httpx.HTTPStatusError):
+        await source.fetch()
+
+
+async def test_client_is_created_once_and_reused(source):
+    assert source._client is None  # nothing opened until the first poll
+    assert source.client is source.client
+
+
+async def test_conditional_get_and_304_means_no_change(source):
+    seen_headers = []
+
+    def handler(request):
+        seen_headers.append(dict(request.headers))
+        if request.headers.get("if-none-match") == '"v1"':
+            return httpx.Response(304)
+        return httpx.Response(200, json=heartbeat_json(1), headers={"ETag": '"v1"'})
+
+    use_handler(source, handler)
+    assert await source.fetch() == []  # baseline
+    assert "if-none-match" not in seen_headers[0]
+
+    assert await source.fetch() == []  # 304: no error, no event
+    assert seen_headers[1]["if-none-match"] == '"v1"'
+    assert source.export_state() == {"last_states": {"1": 1}}
+
+
+async def test_aclose_closes_the_client(source):
+    client = source.client
+    await source.aclose()
+    assert client.is_closed
+    assert source._client is None
+    await source.aclose()  # idempotent

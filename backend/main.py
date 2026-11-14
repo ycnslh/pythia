@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
@@ -60,6 +61,9 @@ async def lifespan(app: FastAPI):
 
     for task in tasks:
         task.cancel()
+    # Let the pollers unwind before closing the HTTP clients they may be using.
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.gather(*(s.aclose() for s in pull_sources), return_exceptions=True)
 
 
 app = FastAPI(title="PYTHIA", version="0.2.0", lifespan=lifespan)

@@ -124,3 +124,32 @@ def test_injected_config_cannot_break_out_of_the_script_tag():
     with patch("static.runtime_config", return_value={"language": "</script><b>"}):
         html = render_index("<html><head></head></html>")
     assert "</script><b>" not in html
+
+
+def test_shutdown_stops_pollers_then_closes_their_http_clients():
+    import asyncio
+
+    order = []
+    cfg = {"type": "rss", "name": "Feed", "url": "http://localhost/feed.xml", "interval": 300}
+
+    def fake_start(sources, store, dedupe):
+        async def poll():
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                order.append("poller stopped")
+
+        return [asyncio.create_task(poll())]
+
+    async def fake_aclose(self):
+        order.append("client closed")
+
+    with (
+        patch("main.load_sources", return_value=[cfg]),
+        patch("main.start_scheduler", fake_start),
+        patch("sources.base.BaseSource.aclose", fake_aclose),
+        TestClient(main.app),
+    ):
+        pass
+
+    assert order == ["poller stopped", "client closed"]
