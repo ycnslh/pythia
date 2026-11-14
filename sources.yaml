@@ -4,10 +4,12 @@ sources:
     name: BBC World News
     url: https://feeds.bbci.co.uk/news/world/rss.xml
     interval: 300  # seconds
+    # max_failures: 10  # optional: consecutive failed polls before the source is
+    #                   # disabled until restart (default 10, 0 = retry forever)
 
   - type: rss
-    name: Reuters World
-    url: https://feeds.reuters.com/reuters/worldNews
+    name: The Guardian World
+    url: https://www.theguardian.com/world/rss
     interval: 300
 
   - type: rss

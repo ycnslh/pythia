@@ -261,7 +261,7 @@ The category always matches the criticality: the evaluator computes it from the 
 | `POST /webhook/{path}` | One endpoint per `webhook` entry in `sources.yaml`, registered at startup; answers `202` |
 | `GET /*` | The built frontend (SPA). Always registered last so it never shadows the routes above |
 
-The scheduler tracks per-source health (`source_health`) and applies exponential backoff on polling errors (capped at 1h). Event history and per-source state are persisted as small JSON files in `DATA_DIR` (atomic writes); if it is empty or unwritable PYTHIA runs purely in memory.
+The scheduler tracks per-source health (`source_health`) and applies exponential backoff on polling errors (capped at 1h). After `max_failures` consecutive failures (per-source key in `sources.yaml`, default 10, `0` = never give up) a source is logged once at `error` level and disabled until the next restart. Event history and per-source state are persisted as small JSON files in `DATA_DIR` (atomic writes); if it is empty or unwritable PYTHIA runs purely in memory.
 
 ---
 
