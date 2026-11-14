@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from sources.rss import MAX_ENTRIES, SEEN_CAP, RSSSource
@@ -201,3 +202,127 @@ async def test_restored_state_counts_as_already_primed():
         second = await source.fetch()
 
     assert len(first) == MAX_ENTRIES and len(second) == 3
+
+
+# ─── Shared client & conditional GET ──────────────────────────────────────────
+
+
+def feed_xml(*titles):
+    items = "".join(
+        f"<item><title>{t}</title><link>https://example.com/{i}</link><guid>g{i}</guid></item>"
+        for i, t in enumerate(titles)
+    )
+    return f"<rss version='2.0'><channel><title>T</title>{items}</channel></rss>".encode()
+
+
+def serve(source, handler):
+    """Route the source's HTTP client to `handler` (no real network)."""
+    requests = []
+
+    def recording(request):
+        requests.append(request)
+        return handler(request)
+
+    source._client = httpx.AsyncClient(transport=httpx.MockTransport(recording))
+    return requests
+
+
+def etag_server(body, etag='"v1"', last_modified="Sat, 14 Nov 2026 10:00:00 GMT"):
+    def handler(request):
+        if request.headers.get("if-none-match") == etag:
+            return httpx.Response(304)
+        return httpx.Response(
+            200, content=body, headers={"ETag": etag, "Last-Modified": last_modified}
+        )
+
+    return handler
+
+
+async def test_304_means_no_change_without_error_or_event():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    requests = serve(source, etag_server(feed_xml("a", "b")))
+
+    assert len(await source.fetch()) == 2  # first poll: 200
+    assert "if-none-match" not in requests[0].headers
+
+    with patch("sources.rss.feedparser.parse") as parse:
+        assert await source.fetch() == []  # second poll: 304
+        parse.assert_not_called()  # nothing downloaded, nothing parsed
+
+    assert requests[1].headers["if-none-match"] == '"v1"'
+    assert requests[1].headers["if-modified-since"] == "Sat, 14 Nov 2026 10:00:00 GMT"
+    assert source.export_state()["etag"] == '"v1"'
+
+
+async def test_changed_feed_after_validators_emits_new_entries():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    serve(source, etag_server(feed_xml("a")))
+    await source.fetch()
+
+    serve(source, etag_server(feed_xml("a", "b"), etag='"v2"'))  # validator no longer matches
+    events = await source.fetch()
+    assert [e.title for e in events] == ["b"]
+    assert source._etag == '"v2"'
+
+
+async def test_validators_survive_a_restart():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    serve(source, etag_server(feed_xml("a")))
+    await source.fetch()
+    state = source.export_state()
+
+    restarted = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    restarted.load_state(state)
+    requests = serve(restarted, etag_server(feed_xml("a")))
+    assert await restarted.fetch() == []
+    assert requests[0].headers["if-none-match"] == '"v1"'
+    assert requests[0].method == "GET"
+
+
+async def test_no_validators_are_sent_before_the_first_successful_poll():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    source.load_state({"seen": [], "etag": '"v1"', "last_modified": "x"})
+    requests = serve(source, etag_server(feed_xml("a")))
+
+    assert len(await source.fetch()) == 1  # not a 304: backlog baseline still applies
+    assert "if-none-match" not in requests[0].headers
+
+
+async def test_backlog_beyond_the_cap_forces_a_full_download_next_time():
+    titles = [f"t{i}" for i in range(MAX_ENTRIES + 3)]
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    source._primed = True  # not the baseline poll: the extra entries are a real backlog
+    requests = serve(source, etag_server(feed_xml(*titles)))
+
+    assert len(await source.fetch()) == MAX_ENTRIES
+    assert source._etag is None  # a 304 would hide the 3 entries left
+
+    assert len(await source.fetch()) == 3  # downloaded again, not 304
+    assert "if-none-match" not in requests[1].headers
+    assert source._etag == '"v1"'
+
+
+async def test_unparseable_response_does_not_store_validators():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    serve(source, lambda r: httpx.Response(200, content=b"not a feed", headers={"ETag": '"bad"'}))
+
+    with pytest.raises(ValueError):
+        await source.fetch()
+    assert source._etag is None
+
+
+async def test_http_error_propagates():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    serve(source, lambda r: httpx.Response(500))
+    with pytest.raises(httpx.HTTPStatusError):
+        await source.fetch()
+
+
+async def test_client_is_reused_across_polls_and_closed_once():
+    source = RSSSource({"name": "Cond", "url": "https://example.com/feed.xml"})
+    client = source.client
+    assert source.client is client
+    assert client.headers["user-agent"].startswith("PYTHIA")
+    assert client.follow_redirects is True
+    await source.aclose()
+    assert client.is_closed

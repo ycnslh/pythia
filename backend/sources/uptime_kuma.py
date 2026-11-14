@@ -1,8 +1,6 @@
 import logging
 from typing import Dict, List
 
-import httpx
-
 from models import RawEvent
 from sources.base import BaseSource
 
@@ -47,10 +45,11 @@ class UptimeKumaSource(BaseSource):
             headers["Authorization"] = f"Bearer {api_key}"
 
         # Errors propagate on purpose: the scheduler flags the source unhealthy and backs off.
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(endpoint, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await self.get_if_changed(endpoint, headers)
+        if resp is None:
+            return []  # 304 Not Modified: no heartbeat changed, so no transition
+        data = resp.json()
+        self.remember_validators(resp)
 
         events: List[RawEvent] = []
         heartbeat_list: Dict[str, list] = data.get("heartbeatList", {})

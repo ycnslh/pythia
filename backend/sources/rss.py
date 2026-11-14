@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import List
 
 import feedparser
-import httpx
 
 from models import RawEvent
 from sources.base import BaseSource
@@ -36,40 +35,62 @@ USER_AGENT = "PYTHIA/0.1 (+rss)"
 
 
 class RSSSource(BaseSource):
+    http_timeout = FETCH_TIMEOUT
+    http_follow_redirects = True
+    http_headers = {"User-Agent": USER_AGENT}
+
     def __init__(self, config: dict) -> None:
         super().__init__(config)
         self._seen: OrderedDict[str, None] = OrderedDict()
         # False until the first successful poll (or restored state): that first poll
         # only emits the newest entries and swallows the older backlog.
         self._primed = False
+        # Response whose validators become current once its entries were processed.
+        self._pending_response = None
 
     def get_type(self) -> str:
         return "rss"
 
     def export_state(self) -> dict:
-        return {"seen": list(self._seen)}
+        return {
+            "seen": list(self._seen),
+            "etag": self._etag,
+            "last_modified": self._last_modified,
+        }
 
     def load_state(self, state: dict) -> None:
         seen = state.get("seen", [])
         if isinstance(seen, list):
             self._seen = OrderedDict((str(uid), None) for uid in seen[-SEEN_CAP:])
             self._primed = bool(self._seen)
+        etag = state.get("etag")
+        last_modified = state.get("last_modified")
+        self._etag = etag if isinstance(etag, str) else None
+        self._last_modified = last_modified if isinstance(last_modified, str) else None
 
-    async def _download(self) -> bytes:
-        """Download the feed with a bounded timeout. Raises on network/HTTP errors."""
-        async with httpx.AsyncClient(
-            timeout=FETCH_TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}
-        ) as client:
-            resp = await client.get(self.config["url"])
-            resp.raise_for_status()
-            return resp.content
+    async def _download(self) -> bytes | None:
+        """Download the feed with a bounded timeout. Raises on network/HTTP errors.
+
+        Returns None when the server answers 304 Not Modified. Validators are only
+        sent once a first poll succeeded: before that the backlog is not baselined.
+        """
+        if not self._primed:
+            self.forget_validators()
+        resp = await self.get_if_changed(self.config["url"])
+        if resp is None:
+            return None
+        self._pending_response = resp
+        return resp.content
 
     async def fetch(self) -> List[RawEvent]:
         """
         Errors (network, HTTP status, unparseable feed) are raised on purpose:
         the scheduler uses them to flag the source unhealthy and back off.
         """
+        self._pending_response = None
         content = await self._download()
+        if content is None:
+            return []  # 304 Not Modified: nothing to parse, nothing new
         loop = asyncio.get_running_loop()
         feed = await loop.run_in_executor(None, feedparser.parse, content)
 
@@ -79,6 +100,7 @@ class RSSSource(BaseSource):
         events: List[RawEvent] = []
         new_entries = 0
         first_poll = not self._primed
+        backlog_left = False
 
         for entry in feed.entries:
             uid = (
@@ -95,6 +117,7 @@ class RSSSource(BaseSource):
                     # them to the LLM five at a time over the next polls.
                     self._seen[uid] = None
                     continue
+                backlog_left = True
                 break
             self._seen[uid] = None
             new_entries += 1
@@ -114,6 +137,14 @@ class RSSSource(BaseSource):
             )
 
         self._primed = True
+
+        # Only trust a 304 later if every entry of this response was consumed. With a
+        # backlog left (more than MAX_ENTRIES new), the next poll must download again.
+        if self._pending_response is not None and not backlog_left:
+            self.remember_validators(self._pending_response)
+        else:
+            self.forget_validators()
+        self._pending_response = None
 
         # Trim _seen to avoid unbounded growth — remove oldest entries first
         if len(self._seen) > SEEN_CAP:
