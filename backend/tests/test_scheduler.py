@@ -13,8 +13,8 @@ from store import StateStore
 class FakeSource(BaseSource):
     """Scripted source: each fetch() pops the next item (list of events, or an exception)."""
 
-    def __init__(self, script, name="Fake", source_type="rss"):
-        super().__init__({"name": name, "interval": 1})
+    def __init__(self, script, name="Fake", source_type="rss", **config):
+        super().__init__({"name": name, "interval": 1, **config})
         self.script = list(script)
         self.type = source_type
         self.state = {"n": 0}
@@ -95,11 +95,43 @@ async def test_failure_marks_unhealthy_and_backs_off_exponentially(process):
 
 
 async def test_backoff_is_capped(process):
-    src = FakeSource([RuntimeError("boom")] * 30, name="Dead")
+    src = FakeSource([RuntimeError("boom")] * 30, name="Dead", max_failures=0)
     sleeps = await run_polls(src, 30)
 
     assert max(sleeps) == scheduler.MAX_BACKOFF_S
     assert scheduler.source_health["Dead"] is False
+
+
+async def test_source_is_disabled_after_max_consecutive_failures(process, caplog):
+    src = FakeSource([RuntimeError("boom")] * 10, name="Gone", max_failures=3)
+    with caplog.at_level("WARNING", logger="scheduler"):
+        sleeps = await run_polls(src, 10)
+
+    assert len(src.script) == 7  # only 3 of the 10 scripted fetches ran
+    assert len(sleeps) == 2  # the 3rd failure returns instead of sleeping
+    assert scheduler.source_health["Gone"] is False
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "disabled until restart" in errors[0].getMessage()
+    process.assert_not_called()
+
+
+async def test_default_cap_applies_when_unconfigured(process):
+    src = FakeSource([RuntimeError("boom")] * 30, name="DeadDefault")
+    sleeps = await run_polls(src, 30)
+
+    assert len(sleeps) == scheduler.DEFAULT_MAX_FAILURES - 1
+    assert len(src.script) == 30 - scheduler.DEFAULT_MAX_FAILURES
+
+
+async def test_success_resets_the_failure_count(process):
+    # 2 failures, a success, 2 more failures: never 3 in a row, so never disabled.
+    script = [RuntimeError("x"), RuntimeError("x"), [], RuntimeError("x"), RuntimeError("x"), []]
+    src = FakeSource(script, name="Recovers", max_failures=3)
+    await run_polls(src, 6)
+
+    assert src.script == []
+    assert scheduler.source_health["Recovers"] is True
 
 
 async def test_duplicate_rss_headlines_are_evaluated_once(process):

@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 source_health: dict[str, bool] = {}
 
 MAX_BACKOFF_S = 3600
+# Consecutive failed polls after which a source is given up until the next restart.
+# Override per source with `max_failures` in sources.yaml (0 = retry forever).
+DEFAULT_MAX_FAILURES = 10
 
 
 async def _poll_source(
@@ -22,6 +25,7 @@ async def _poll_source(
     dedupe: TitleDeduplicator | None = None,
 ) -> None:
     interval: int = source.config.get("interval", 300)
+    max_failures: int = source.config.get("max_failures", DEFAULT_MAX_FAILURES)
     name = source.get_name()
     key = state_key("source", name)
     logger.info("Polling started for %s (interval: %ds)", name, interval)
@@ -64,8 +68,15 @@ async def _poll_source(
         except Exception as e:
             source_health[name] = False
             error_count += 1
+            if max_failures and error_count >= max_failures:
+                # Single error-level line: the source stays flagged unhealthy.
+                logger.error(
+                    "Source %s disabled until restart after %d consecutive failures: %s",
+                    name, error_count, e,
+                )
+                return
             backoff = min(interval * (2**error_count), MAX_BACKOFF_S)
-            logger.error(
+            logger.warning(
                 "Poll failed for %s (attempt %d) — retrying in %ds: %s",
                 name, error_count, backoff, e,
             )
