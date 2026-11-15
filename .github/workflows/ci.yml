@@ -17,18 +17,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Les jobs de test tournent sur un runner GitHub (jetable), PAS sur le runner
+  # self-hosted : ce depot est public, et pour une PR issue d'un fork GitHub execute
+  # la version du workflow qui se trouve dans la PR. Un runner self-hosted
+  # laisserait n'importe quel fork executer du code sur l'hote de deploiement.
+  # Seul `deploy` utilise le runner self-hosted, et uniquement sur push vers main.
+
   # ─── Backend lint + unit tests ─────────────────────────────────────────────
   test-backend:
     name: Backend lint & tests
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - name: Clean root-owned files from previous runs
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            python:3.11-slim \
-            sh -c "find /workspace/backend -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) -exec rm -rf {} + 2>/dev/null; exit 0"
-
       - uses: actions/checkout@v5
 
       - name: Lint and test
@@ -44,7 +43,7 @@ jobs:
   # ─── Frontend lint + unit tests + build ────────────────────────────────────
   test-frontend:
     name: Frontend lint, tests & build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
